@@ -2,18 +2,30 @@ const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
 const authRoutes = require("./routes/auth.routes");
+const consentRoutes = require("./routes/consent.routes");
+const demoRoutes = require("./routes/demo.routes");
+const telemetryRoutes = require("./routes/telemetry.routes");
 
 const app = express();
 
 app.use(helmet());
 app.use(cors());
-app.use(express.json());
+app.use(express.json({
+  verify: (req, res, buffer) => {
+    if (buffer?.length) {
+      req.rawBody = buffer.toString("utf8");
+    }
+  }
+}));
 
 app.get("/health", (req, res) => {
   res.status(200).json({ status: "ok" });
 });
 
 app.use("/api/auth", authRoutes);
+app.use("/api/consent", consentRoutes);
+app.use("/api/demo", demoRoutes);
+app.use("/api/telemetry", telemetryRoutes);
 
 app.use((req, res) => {
   res.status(404).json({ message: "Route not found." });
