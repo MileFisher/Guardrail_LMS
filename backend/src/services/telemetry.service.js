@@ -1,7 +1,13 @@
 const { addTelemetryPayload, createTelemetrySession } = require("../data/telemetry-session.store");
+const { ensureAssignmentAccess } = require("./course.service");
 const { generateSessionKey } = require("./hmac.service");
 
-function openTelemetrySession({ assignmentId, userId, deviceType, screenResolution }) {
+async function openTelemetrySession({ assignmentId, userId, deviceType, screenResolution }) {
+  await ensureAssignmentAccess(assignmentId, {
+    id: userId,
+    role: "student"
+  });
+
   const hmacKey = generateSessionKey();
 
   return createTelemetrySession({
@@ -13,7 +19,7 @@ function openTelemetrySession({ assignmentId, userId, deviceType, screenResoluti
   });
 }
 
-function storeTelemetryPayload({ sessionId, rawBody, body }) {
+async function storeTelemetryPayload({ sessionId, rawBody, body }) {
   return addTelemetryPayload(sessionId, {
     receivedAt: new Date().toISOString(),
     rawBody,

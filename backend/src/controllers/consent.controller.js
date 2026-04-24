@@ -7,18 +7,26 @@ const {
   publishConsentPolicy
 } = require("../services/consent.service");
 
-function getCurrentPolicy(req, res) {
-  const policy = getActivePolicy();
-  return res.status(200).json({ policy });
-}
-
-function getPolicyHistory(req, res) {
-  return res.status(200).json({ policies: getAllPolicies() });
-}
-
-function createPolicy(req, res, next) {
+async function getCurrentPolicy(req, res, next) {
   try {
-    const policy = publishConsentPolicy(req.body);
+    const policy = await getActivePolicy();
+    return res.status(200).json({ policy });
+  } catch (error) {
+    return next(error);
+  }
+}
+
+async function getPolicyHistory(req, res, next) {
+  try {
+    return res.status(200).json({ policies: await getAllPolicies() });
+  } catch (error) {
+    return next(error);
+  }
+}
+
+async function createPolicy(req, res, next) {
+  try {
+    const policy = await publishConsentPolicy(req.body);
     return res.status(201).json({
       message: "Consent policy published successfully.",
       policy
@@ -28,9 +36,9 @@ function createPolicy(req, res, next) {
   }
 }
 
-function acceptCurrentPolicy(req, res, next) {
+async function acceptCurrentPolicy(req, res, next) {
   try {
-    const consentLog = acceptConsent({
+    const consentLog = await acceptConsent({
       userId: req.user.id,
       policyVersion: req.body.policyVersion
     });
@@ -44,16 +52,24 @@ function acceptCurrentPolicy(req, res, next) {
   }
 }
 
-function getMyConsentLogs(req, res) {
-  return res.status(200).json({
-    consentLogs: getConsentLogsByUserId(req.user.id)
-  });
+async function getMyConsentLogs(req, res, next) {
+  try {
+    return res.status(200).json({
+      consentLogs: await getConsentLogsByUserId(req.user.id)
+    });
+  } catch (error) {
+    return next(error);
+  }
 }
 
-function getAllConsentLogs(req, res) {
-  return res.status(200).json({
-    consentLogs: getConsentLogs()
-  });
+async function getAllConsentLogs(req, res, next) {
+  try {
+    return res.status(200).json({
+      consentLogs: await getConsentLogs()
+    });
+  } catch (error) {
+    return next(error);
+  }
 }
 
 module.exports = {

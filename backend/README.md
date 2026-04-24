@@ -12,7 +12,7 @@ This is the first backend scaffold for the standalone Guardrail LMS prototype.
 - Role-protected demo routes for `teacher` and `admin`
 - Versioned consent policy endpoints with append-only consent logs
 - HMAC-SHA256 telemetry verification for monitored payloads
-- In-memory stores for early development
+- PostgreSQL-backed persistence with automatic schema bootstrap
 
 ## Install
 
@@ -34,6 +34,7 @@ Copy `.env.example` to `.env` and set:
 - `JWT_SECRET`
 - `JWT_EXPIRES_IN`
 - `BCRYPT_ROUNDS`
+- `DATABASE_URL`
 
 ## Routes
 
@@ -49,6 +50,13 @@ Copy `.env.example` to `.env` and set:
 - `POST /api/consent/accept`
 - `GET /api/consent/logs/me`
 - `GET /api/consent/logs`
+- `GET /api/courses`
+- `POST /api/courses`
+- `GET /api/courses/:courseId`
+- `POST /api/courses/:courseId/enrollments`
+- `GET /api/courses/:courseId/enrollments`
+- `POST /api/courses/:courseId/assignments`
+- `GET /api/courses/:courseId/assignments`
 - `POST /api/telemetry/sessions`
 - `POST /api/telemetry/payloads`
 
@@ -72,8 +80,55 @@ Copy `.env.example` to `.env` and set:
 5. Sign the exact raw JSON body using HMAC-SHA256 and send the digest in `x-telemetry-signature`.
 6. If the signature is missing or invalid, the API returns `401`.
 
-## Important Note
+## Database
 
-The current stores are in memory only. Restarting the server clears users, consent data, and telemetry sessions.
+On startup, the backend creates the core Guardrail LMS tables from `src/db/schema.sql` if they do not already exist.
 
-This is intentional for early development so the team can validate auth, consent, and telemetry flow before connecting PostgreSQL.
+The implemented schema follows `DB_plan.md` and includes:
+
+- `users`
+- `consents`
+- `courses`
+- `enrollments`
+- `assignments`
+- `writing_sessions`
+- `keystroke_events`
+- `session_metrics`
+- `student_baselines`
+- `submissions`
+- `anomaly_flags`
+- `study_sessions`
+- `hint_interactions`
+
+An extra `consent_policies` table is also created because the current API already supports publishing and retrieving policy versions.
+
+## Seed Data
+
+To create local demo data:
+
+1. Start PostgreSQL:
+
+```bash
+docker compose up -d
+```
+
+2. Seed demo data:
+
+```bash
+npm run db:seed
+```
+
+This seeds:
+
+- 1 admin
+- 1 teacher
+- 2 students
+- 1 course
+- 1 assignment
+- student enrollments and consent records
+
+3. Start the API:
+
+```bash
+npm run dev
+```

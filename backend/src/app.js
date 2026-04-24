@@ -3,6 +3,7 @@ const cors = require("cors");
 const helmet = require("helmet");
 const authRoutes = require("./routes/auth.routes");
 const consentRoutes = require("./routes/consent.routes");
+const courseRoutes = require("./routes/course.routes");
 const demoRoutes = require("./routes/demo.routes");
 const telemetryRoutes = require("./routes/telemetry.routes");
 
@@ -24,6 +25,7 @@ app.get("/health", (req, res) => {
 
 app.use("/api/auth", authRoutes);
 app.use("/api/consent", consentRoutes);
+app.use("/api/courses", courseRoutes);
 app.use("/api/demo", demoRoutes);
 app.use("/api/telemetry", telemetryRoutes);
 
@@ -32,8 +34,18 @@ app.use((req, res) => {
 });
 
 app.use((error, req, res, next) => {
-  const statusCode = error.statusCode || 500;
-  const message = error.message || "Internal server error.";
+  let statusCode = error.statusCode || 500;
+  let message = error.message || "Internal server error.";
+
+  if (error.code === "23505") {
+    statusCode = 409;
+    message = "A record with that value already exists.";
+  }
+
+  if (error.code === "23503") {
+    statusCode = 400;
+    message = "The request references a related record that does not exist.";
+  }
 
   res.status(statusCode).json({ message });
 });
