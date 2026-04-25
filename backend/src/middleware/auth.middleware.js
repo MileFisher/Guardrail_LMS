@@ -1,7 +1,7 @@
 const { findUserById } = require("../data/user.store");
 const { verifyAccessToken } = require("../services/token.service");
 
-function requireAuth(req, res, next) {
+async function requireAuth(req, res, next) {
   const authHeader = req.headers.authorization;
 
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
@@ -10,9 +10,16 @@ function requireAuth(req, res, next) {
 
   const token = authHeader.slice("Bearer ".length);
 
+  let payload;
+
   try {
-    const payload = verifyAccessToken(token);
-    const user = findUserById(payload.sub);
+    payload = verifyAccessToken(token);
+  } catch (error) {
+    return res.status(401).json({ message: "Invalid or expired token." });
+  }
+
+  try {
+    const user = await findUserById(payload.sub);
 
     if (!user) {
       return res.status(401).json({ message: "User no longer exists." });
@@ -27,7 +34,7 @@ function requireAuth(req, res, next) {
 
     return next();
   } catch (error) {
-    return res.status(401).json({ message: "Invalid or expired token." });
+    return next(error);
   }
 }
 

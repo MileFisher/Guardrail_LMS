@@ -1,11 +1,11 @@
 const bcrypt = require("bcryptjs");
 const { v4: uuidv4 } = require("uuid");
 const env = require("../config/env");
-const { addUser, findUserByEmail } = require("../data/user.store");
+const { addUser, findUserByEmail, touchUser } = require("../data/user.store");
 
 async function registerUser({ email, password, displayName, role }) {
   const normalizedEmail = email.toLowerCase().trim();
-  const existingUser = findUserByEmail(normalizedEmail);
+  const existingUser = await findUserByEmail(normalizedEmail);
 
   if (existingUser) {
     const error = new Error("Email is already registered.");
@@ -16,7 +16,7 @@ async function registerUser({ email, password, displayName, role }) {
   const passwordHash = await bcrypt.hash(password, env.bcryptRounds);
   const now = new Date().toISOString();
 
-  const user = addUser({
+  const user = await addUser({
     id: uuidv4(),
     email: normalizedEmail,
     passwordHash,
@@ -32,7 +32,7 @@ async function registerUser({ email, password, displayName, role }) {
 
 async function loginUser({ email, password }) {
   const normalizedEmail = email.toLowerCase().trim();
-  const user = findUserByEmail(normalizedEmail);
+  const user = await findUserByEmail(normalizedEmail);
 
   if (!user) {
     const error = new Error("Invalid email or password.");
@@ -48,8 +48,7 @@ async function loginUser({ email, password }) {
     throw error;
   }
 
-  user.updatedAt = new Date().toISOString();
-  return user;
+  return touchUser(user.id, new Date().toISOString());
 }
 
 function sanitizeUser(user) {

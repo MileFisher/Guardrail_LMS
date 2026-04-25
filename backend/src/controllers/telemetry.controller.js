@@ -1,6 +1,6 @@
 const { openTelemetrySession, storeTelemetryPayload } = require("../services/telemetry.service");
 
-function createSession(req, res, next) {
+async function createSession(req, res, next) {
   try {
     const { assignmentId, deviceType, screenResolution } = req.body;
 
@@ -10,7 +10,7 @@ function createSession(req, res, next) {
       throw error;
     }
 
-    const session = openTelemetrySession({
+    const session = await openTelemetrySession({
       assignmentId,
       userId: req.user.id,
       deviceType,
@@ -34,9 +34,9 @@ function createSession(req, res, next) {
   }
 }
 
-function ingestPayload(req, res, next) {
+async function ingestPayload(req, res, next) {
   try {
-    const session = storeTelemetryPayload({
+    const session = await storeTelemetryPayload({
       sessionId: req.body.sessionId,
       rawBody: req.rawBody,
       body: req.body
@@ -51,7 +51,7 @@ function ingestPayload(req, res, next) {
     return res.status(202).json({
       message: "Telemetry payload accepted.",
       sessionId: session.id,
-      totalPayloads: session.payloads.length
+      totalPayloads: session.payloadCount
     });
   } catch (error) {
     return next(error);

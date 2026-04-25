@@ -1,0 +1,15 @@
+{
+  "Servers": {
+    "1": {
+      "Name": "Guardrail PostgreSQL",
+      "Group": "Servers",
+      "Host": "postgres",
+      "Port": 5432,
+      "MaintenanceDB": "guardrail_lms",
+      "Username": "postgres",
+      "Password": "postgres",
+      "SavePassword": true,
+      "SSLMode": "prefer"
+    }
+  }
+}

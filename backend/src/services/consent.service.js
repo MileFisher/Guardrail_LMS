@@ -1,14 +1,19 @@
 const { addConsentLog, getConsentLogs, getConsentLogsByUserId } = require("../data/consent-log.store");
-const { addPolicy, getActivePolicy, getAllPolicies, getPolicyByVersion } = require("../data/consent-policy.store");
+const {
+  addPolicy,
+  getActivePolicy,
+  getAllPolicies,
+  getPolicyByVersion
+} = require("../data/consent-policy.store");
 
-function publishConsentPolicy({ version, contentMarkdown }) {
+async function publishConsentPolicy({ version, contentMarkdown }) {
   if (!version || !contentMarkdown) {
     const error = new Error("Version and contentMarkdown are required.");
     error.statusCode = 400;
     throw error;
   }
 
-  if (getPolicyByVersion(version)) {
+  if (await getPolicyByVersion(version)) {
     const error = new Error("A consent policy with that version already exists.");
     error.statusCode = 409;
     throw error;
@@ -17,8 +22,8 @@ function publishConsentPolicy({ version, contentMarkdown }) {
   return addPolicy({ version, contentMarkdown });
 }
 
-function acceptConsent({ userId, policyVersion }) {
-  const policy = policyVersion ? getPolicyByVersion(policyVersion) : getActivePolicy();
+async function acceptConsent({ userId, policyVersion }) {
+  const policy = policyVersion ? await getPolicyByVersion(policyVersion) : await getActivePolicy();
 
   if (!policy) {
     const error = new Error("Consent policy not found.");
