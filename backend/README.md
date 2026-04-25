@@ -38,6 +38,7 @@ Copy `.env.example` to `.env` and set:
 
 ## Routes
 
+- `GET /` static frontend control surface served from the top-level `frontend/` folder
 - `GET /health`
 - `POST /api/auth/register`
 - `POST /api/auth/login`
@@ -84,6 +85,8 @@ Copy `.env.example` to `.env` and set:
 
 On startup, the backend creates the core Guardrail LMS tables from `src/db/schema.sql` if they do not already exist.
 
+The backend serves a browser UI from `/`, but the UI files now live in the top-level `frontend/` folder instead of inside `backend/`.
+
 The implemented schema follows `DB_plan.md` and includes:
 
 - `users`
@@ -106,11 +109,7 @@ An extra `consent_policies` table is also created because the current API alread
 
 To create local demo data:
 
-1. Start PostgreSQL:
-
-```bash
-docker compose up -d
-```
+1. Make sure PostgreSQL is running and that `DATABASE_URL` in `.env` points to it.
 
 2. Seed demo data:
 
