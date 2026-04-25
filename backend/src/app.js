@@ -1,4 +1,5 @@
 const express = require("express");
+const path = require("path");
 const cors = require("cors");
 const helmet = require("helmet");
 const authRoutes = require("./routes/auth.routes");
@@ -8,6 +9,7 @@ const demoRoutes = require("./routes/demo.routes");
 const telemetryRoutes = require("./routes/telemetry.routes");
 
 const app = express();
+const frontendDir = path.join(__dirname, "..", "..", "frontend");
 
 app.use(helmet());
 app.use(cors());
@@ -28,6 +30,7 @@ app.use("/api/consent", consentRoutes);
 app.use("/api/courses", courseRoutes);
 app.use("/api/demo", demoRoutes);
 app.use("/api/telemetry", telemetryRoutes);
+app.use(express.static(frontendDir));
 
 app.use((req, res) => {
   res.status(404).json({ message: "Route not found." });
