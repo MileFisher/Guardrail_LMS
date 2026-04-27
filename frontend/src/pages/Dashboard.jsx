@@ -4,18 +4,24 @@ import Consent from './Consent'
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || ''
 
-// --------------------------- UI helpers ---------------------------
 const statusColors = {
     pending: { bg: '#fff8f0', color: '#c0560a', border: '#fed7aa' },
     dismissed: { bg: '#f0fdf4', color: '#15803d', border: '#bbf7d0' },
     escalated: { bg: '#fef2f2', color: '#b91c1c', border: '#fecaca' },
-    notified: { bg: '#eff6ff', color: '#1d4ed8', border: '#bfdbfe' },
 }
 
 const hintLevelColors = {
     L1: { bg: '#eff6ff', color: '#1d4ed8', border: '#bfdbfe', label: 'L1 Nudge' },
     L2: { bg: '#faf5ff', color: '#7c3aed', border: '#e9d5ff', label: 'L2 Scaffold' },
     L3: { bg: '#fff7ed', color: '#c2410c', border: '#fed7aa', label: 'L3 Guided' },
+}
+
+function formatDeviceType(deviceType) {
+    if (!deviceType) {
+        return 'Unknown device'
+    }
+
+    return deviceType.charAt(0).toUpperCase() + deviceType.slice(1)
 }
 
 function WpmTrendChart({ sessions }) {
@@ -31,16 +37,20 @@ function WpmTrendChart({ sessions }) {
     const H = 80
     const PAD = { t: 8, r: 16, b: 24, l: 32 }
 
-    const maxWpm = Math.max(...sessions.map((s) => s.wpm)) + 5
-    const minWpm = Math.max(0, Math.min(...sessions.map((s) => s.wpm)) - 5)
+    const maxWpm = Math.max(...sessions.map((session) => session.wpm)) + 5
+    const minWpm = Math.max(0, Math.min(...sessions.map((session) => session.wpm)) - 5)
     const xStep = sessions.length > 1 ? (W - PAD.l - PAD.r) / (sessions.length - 1) : 0
 
     const yScale = (wpm) =>
         PAD.t + (1 - (wpm - minWpm) / Math.max(1, maxWpm - minWpm)) * (H - PAD.t - PAD.b)
 
-    const pts = sessions.map((s, i) => ({ x: PAD.l + i * xStep, y: yScale(s.wpm), ...s }))
-    const linePath = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x},${p.y}`).join(' ')
-    const areaPath = `${linePath} L${pts[pts.length - 1].x},${H - PAD.b} L${pts[0].x},${H - PAD.b} Z`
+    const points = sessions.map((session, index) => ({
+        x: PAD.l + index * xStep,
+        y: yScale(session.wpm),
+        ...session,
+    }))
+    const linePath = points.map((point, index) => `${index === 0 ? 'M' : 'L'}${point.x},${point.y}`).join(' ')
+    const areaPath = `${linePath} L${points[points.length - 1].x},${H - PAD.b} L${points[0].x},${H - PAD.b} Z`
 
     return (
         <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ display: 'block' }}>
@@ -51,14 +61,14 @@ function WpmTrendChart({ sessions }) {
                 </linearGradient>
             </defs>
 
-            {[0.25, 0.5, 0.75].map((t, i) => {
-                const y = PAD.t + t * (H - PAD.t - PAD.b)
-                const val = Math.round(maxWpm - t * (maxWpm - minWpm))
+            {[0.25, 0.5, 0.75].map((tick, index) => {
+                const y = PAD.t + tick * (H - PAD.t - PAD.b)
+                const value = Math.round(maxWpm - tick * (maxWpm - minWpm))
                 return (
-                    <g key={i}>
+                    <g key={index}>
                         <line x1={PAD.l} x2={W - PAD.r} y1={y} y2={y} stroke="#f0f0f0" strokeWidth="1" />
                         <text x={PAD.l - 4} y={y + 4} fontSize="9" fill="#bbb" textAnchor="end">
-                            {val}
+                            {value}
                         </text>
                     </g>
                 )
@@ -67,11 +77,11 @@ function WpmTrendChart({ sessions }) {
             <path d={areaPath} fill="url(#wpmGrad)" />
             <path d={linePath} fill="none" stroke="#1a5fa8" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
 
-            {pts.map((p, i) => (
-                <g key={i}>
-                    <circle cx={p.x} cy={p.y} r="3.5" fill="white" stroke="#1a5fa8" strokeWidth="2" />
-                    <text x={p.x} y={H - 6} fontSize="9" fill="#aaa" textAnchor="middle">
-                        {p.date}
+            {points.map((point, index) => (
+                <g key={index}>
+                    <circle cx={point.x} cy={point.y} r="3.5" fill="white" stroke="#1a5fa8" strokeWidth="2" />
+                    <text x={point.x} y={H - 6} fontSize="9" fill="#aaa" textAnchor="middle">
+                        {point.date}
                     </text>
                 </g>
             ))}
@@ -95,7 +105,9 @@ function CalibrationBadge({ baseline }) {
                 border: `1px solid ${baseline.isCalibrated ? '#bbf7d0' : '#fde68a'}`,
             }}
         >
-            {baseline.isCalibrated ? '✓ Calibrated' : `Calibrating ${baseline.sessionCount}/3`}
+            {baseline.isCalibrated
+                ? `${formatDeviceType(baseline.deviceType)} calibrated`
+                : `${formatDeviceType(baseline.deviceType)} ${baseline.sessionCount}/3`}
         </span>
     )
 }
@@ -146,7 +158,7 @@ function AssignmentRow({ assignment, onOpen }) {
                     color: isSubmitted ? '#15803d' : 'white',
                 }}
             >
-                {isSubmitted ? '✓ Submitted' : 'Open'}
+                {isSubmitted ? 'Submitted' : 'Open'}
             </button>
         </div>
     )
@@ -154,7 +166,7 @@ function AssignmentRow({ assignment, onOpen }) {
 
 function CourseCard({ course, onOpenAssignment }) {
     const [expanded, setExpanded] = useState(true)
-    const submitted = course.assignments.filter((a) => a.status === 'submitted').length
+    const submitted = course.assignments.filter((assignment) => assignment.status === 'submitted').length
 
     return (
         <div
@@ -167,7 +179,7 @@ function CourseCard({ course, onOpenAssignment }) {
             }}
         >
             <div
-                onClick={() => setExpanded((e) => !e)}
+                onClick={() => setExpanded((value) => !value)}
                 style={{
                     display: 'flex',
                     alignItems: 'center',
@@ -200,14 +212,21 @@ function CourseCard({ course, onOpenAssignment }) {
                         <p style={{ margin: 0, fontSize: '12px', color: '#888' }}>
                             {course.teacher || 'Teacher'} · {submitted}/{course.assignments.length} submitted
                         </p>
+                        {course.baselines?.length > 0 && (
+                            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '8px' }}>
+                                {course.baselines.map((baseline) => (
+                                    <CalibrationBadge key={baseline.id} baseline={baseline} />
+                                ))}
+                            </div>
+                        )}
                     </div>
                 </div>
-                <span style={{ color: '#aaa', fontSize: '16px' }}>{expanded ? '▾' : '▸'}</span>
+                <span style={{ color: '#aaa', fontSize: '16px' }}>{expanded ? '▼' : '▶'}</span>
             </div>
 
             {expanded &&
                 (course.assignments.length ? (
-                    course.assignments.map((a) => <AssignmentRow key={a.id} assignment={a} onOpen={onOpenAssignment} />)
+                    course.assignments.map((assignment) => <AssignmentRow key={assignment.id} assignment={assignment} onOpen={onOpenAssignment} />)
                 ) : (
                     <p style={{ padding: '1rem 1.25rem', margin: 0, color: '#999', fontSize: '13px' }}>No assignments yet.</p>
                 ))}
@@ -233,7 +252,7 @@ function DeleteDataModal({ onClose }) {
             <div style={{ background: 'white', borderRadius: '12px', padding: '2rem', width: '420px', margin: '1rem' }}>
                 {sent ? (
                     <>
-                        <p style={{ margin: '0 0 8px', fontWeight: '600', fontSize: '16px', color: '#15803d' }}>✓ Request submitted</p>
+                        <p style={{ margin: '0 0 8px', fontWeight: '600', fontSize: '16px', color: '#15803d' }}>Request submitted</p>
                         <p style={{ margin: '0 0 1.5rem', fontSize: '14px', color: '#555' }}>
                             Your telemetry deletion request has been logged. Consent records are retained per policy.
                         </p>
@@ -300,7 +319,6 @@ function DeleteDataModal({ onClose }) {
     )
 }
 
-// --------------------------- API helpers ---------------------------
 async function apiGet(path) {
     const token = localStorage.getItem('token')
     const res = await fetch(`${API_BASE}${path}`, {
@@ -316,7 +334,6 @@ async function apiGet(path) {
     return data
 }
 
-// --------------------------- Main component ---------------------------
 function Dashboard() {
     const navigate = useNavigate()
     const user = JSON.parse(localStorage.getItem('user') || 'null')
@@ -324,42 +341,45 @@ function Dashboard() {
     const [showConsent, setShowConsent] = useState(false)
     const [showDeleteModal, setShowDeleteModal] = useState(false)
     const [selectedAssignment, setSelectedAssignment] = useState(null)
-
     const [courses, setCourses] = useState([])
     const [wpmSessions, setWpmSessions] = useState([])
     const [hintHistory, setHintHistory] = useState([])
     const [ownFlags, setOwnFlags] = useState([])
-    const [baseline, setBaseline] = useState({ sessionCount: 0, isCalibrated: false })
-
+    const [totalSessions, setTotalSessions] = useState(0)
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState('')
 
     useEffect(() => {
         let mounted = true
 
-        const loadDashboard = async () => {
+        async function loadDashboard() {
             try {
                 setLoading(true)
                 setError('')
 
-                // 1) courses
-                const coursesRes = await apiGet('/api/courses')
-                const baseCourses = (coursesRes.courses || []).map((c) => ({
-                    ...c,
-                    teacher: c.teacherName || c.teacher || '',
+                const [coursesRes, sessionsRes, baselinesRes, flagsRes] = await Promise.all([
+                    apiGet('/api/courses'),
+                    apiGet('/api/telemetry/sessions?mine=true').catch(() => ({ sessions: [] })),
+                    apiGet('/api/telemetry/baselines?mine=true').catch(() => ({ baselines: [] })),
+                    apiGet('/api/flags/me').catch(() => ({ flags: [] })),
+                ])
+
+                const baseCourses = (coursesRes.courses || []).map((course) => ({
+                    ...course,
+                    teacher: course.teacherName || course.teacher || '',
                     assignments: [],
+                    baselines: [],
                 }))
 
-                // 2) assignments by course (supported by your backend)
                 const assignmentsPerCourse = await Promise.all(
                     baseCourses.map(async (course) => {
                         try {
-                            const asgRes = await apiGet(`/api/courses/${course.id}/assignments`)
-                            const assignments = (asgRes.assignments || []).map((a) => ({
-                                id: a.id,
-                                title: a.title,
-                                due: a.dueAt || a.due || null,
-                                status: a.submittedAt ? 'submitted' : 'open',
+                            const assignmentRes = await apiGet(`/api/courses/${course.id}/assignments`)
+                            const assignments = (assignmentRes.assignments || []).map((assignment) => ({
+                                id: assignment.id,
+                                title: assignment.title,
+                                due: assignment.dueAt || assignment.due || null,
+                                status: assignment.submittedAt ? 'submitted' : 'open',
                             }))
                             return { courseId: course.id, assignments }
                         } catch {
@@ -368,52 +388,58 @@ function Dashboard() {
                     })
                 )
 
-                const assignmentMap = new Map(assignmentsPerCourse.map((x) => [x.courseId, x.assignments]))
-                const mergedCourses = baseCourses.map((c) => ({
-                    ...c,
-                    assignments: assignmentMap.get(c.id) || [],
+                const sessions = sessionsRes.sessions || []
+                const baselines = baselinesRes.baselines || []
+                const flags = (flagsRes.flags || []).map((flag) => ({
+                    ...flag,
+                    confidence: flag.confidencePct ?? flag.confidence,
+                    createdAt: flag.flaggedAt || flag.createdAt,
                 }))
 
-                // 3) optional endpoints (safe fallback if not implemented yet)
-                let safeWpm = []
-                let safeHints = []
-                let safeFlags = []
+                const assignmentsByCourse = new Map(assignmentsPerCourse.map((item) => [item.courseId, item.assignments]))
+                const baselinesByCourse = new Map()
 
-                try {
-                    const sessionRes = await apiGet('/api/telemetry/sessions?mine=true')
-                    // adapt if API shape differs
-                    safeWpm = (sessionRes.sessions || []).map((s, idx) => ({
-                        session: idx + 1,
-                        wpm: Number(s.wpm || s.wordsPerMinute || 0),
-                        date: s.createdAt
-                            ? new Date(s.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
-                            : `S${idx + 1}`,
+                baselines.forEach((baseline) => {
+                    const entries = baselinesByCourse.get(baseline.courseId) || []
+                    entries.push(baseline)
+                    baselinesByCourse.set(baseline.courseId, entries)
+                })
+
+                const mergedCourses = baseCourses.map((course) => ({
+                    ...course,
+                    assignments: assignmentsByCourse.get(course.id) || [],
+                    baselines: baselinesByCourse.get(course.id) || [],
+                }))
+
+                const safeWpm = sessions
+                    .filter((session) => Number.isFinite(Number(session.wpm)))
+                    .map((session, index) => ({
+                        session: index + 1,
+                        wpm: Number(session.wpm),
+                        date: session.createdAt
+                            ? new Date(session.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+                            : `S${index + 1}`,
                     }))
-                } catch {
-                    safeWpm = []
+
+                if (!mounted) {
+                    return
                 }
-
-                // You can wire these once backend endpoints are ready:
-                // safeHints = await apiGet('/api/hints/me')
-                // safeFlags = await apiGet('/api/flags/me')
-                safeHints = []
-                safeFlags = []
-
-                if (!mounted) return
 
                 setCourses(mergedCourses)
                 setWpmSessions(safeWpm)
-                setHintHistory(safeHints)
-                setOwnFlags(safeFlags)
-                setBaseline({
-                    sessionCount: safeWpm.length,
-                    isCalibrated: safeWpm.length >= 3,
-                })
-            } catch (e) {
-                if (!mounted) return
-                setError(e.message || 'Failed to load dashboard')
+                setHintHistory([])
+                setOwnFlags(flags)
+                setTotalSessions(sessions.filter((session) => session.status === 'completed' || session.status === 'submitted').length)
+            } catch (loadError) {
+                if (!mounted) {
+                    return
+                }
+
+                setError(loadError.message || 'Failed to load dashboard')
             } finally {
-                if (mounted) setLoading(false)
+                if (mounted) {
+                    setLoading(false)
+                }
             }
         }
 
@@ -423,12 +449,8 @@ function Dashboard() {
         }
     }, [])
 
-    const allAssignments = useMemo(() => courses.flatMap((c) => c.assignments || []), [courses])
-    const activeFlags = useMemo(
-        () => ownFlags.filter((f) => f.status === 'pending' || f.status === 'notified'),
-        [ownFlags]
-    )
-
+    const allAssignments = useMemo(() => courses.flatMap((course) => course.assignments || []), [courses])
+    const activeFlags = useMemo(() => ownFlags.filter((flag) => flag.status !== 'dismissed'), [ownFlags])
     const currentWpm = wpmSessions.length ? wpmSessions[wpmSessions.length - 1].wpm : 0
     const firstWpm = wpmSessions.length ? wpmSessions[0].wpm : 0
     const wpmDelta = currentWpm - firstWpm
@@ -445,7 +467,9 @@ function Dashboard() {
     const handleConsentAccepted = () => {
         localStorage.setItem('consentAccepted', 'true')
         setShowConsent(false)
-        if (selectedAssignment?.id) navigate(`/editor?assignmentId=${selectedAssignment.id}`)
+        if (selectedAssignment?.id) {
+            navigate(`/editor?assignmentId=${selectedAssignment.id}`)
+        }
     }
 
     const handleConsentDeclined = () => {
@@ -501,7 +525,6 @@ function Dashboard() {
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <CalibrationBadge baseline={baseline} />
                     <span style={{ color: 'rgba(255,255,255,0.85)', fontSize: '13px' }}>{user?.displayName || 'Student'}</span>
                     <button
                         onClick={() => {
@@ -554,7 +577,7 @@ function Dashboard() {
                         }}
                     >
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                            <span>⚠️</span>
+                            <span>!</span>
                             <div>
                                 <p style={{ margin: 0, fontWeight: '600', fontSize: '14px', color: '#c0560a' }}>
                                     {activeFlags.length} flag(s) under review
@@ -586,11 +609,11 @@ function Dashboard() {
                     {[
                         { label: 'Courses', value: courses.length },
                         { label: 'Assignments', value: allAssignments.length },
-                        { label: 'Submitted', value: allAssignments.filter((a) => a.status === 'submitted').length },
-                        { label: 'Sessions', value: baseline.sessionCount },
-                    ].map((s) => (
+                        { label: 'Submitted', value: allAssignments.filter((assignment) => assignment.status === 'submitted').length },
+                        { label: 'Sessions', value: totalSessions },
+                    ].map((stat) => (
                         <div
-                            key={s.label}
+                            key={stat.label}
                             style={{
                                 flex: 1,
                                 background: 'white',
@@ -600,9 +623,9 @@ function Dashboard() {
                             }}
                         >
                             <p style={{ margin: '0 0 4px', fontSize: '11px', color: '#888', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                                {s.label}
+                                {stat.label}
                             </p>
-                            <p style={{ margin: 0, fontSize: '24px', fontWeight: '700', color: '#1a5fa8' }}>{s.value}</p>
+                            <p style={{ margin: 0, fontSize: '24px', fontWeight: '700', color: '#1a5fa8' }}>{stat.value}</p>
                         </div>
                     ))}
                 </div>
@@ -662,13 +685,12 @@ function Dashboard() {
                                 </span>
                             </p>
                         </div>
-                        <CalibrationBadge baseline={baseline} />
                     </div>
 
                     <WpmTrendChart sessions={wpmSessions} />
 
                     <p style={{ margin: '10px 0 0', fontSize: '11px', color: '#bbb' }}>
-                        Typing-speed trend helps build your personal baseline.
+                        Calibration status now appears on each course card by device.
                     </p>
                 </div>
 
@@ -690,23 +712,23 @@ function Dashboard() {
                         <p style={{ padding: '1.5rem', color: '#aaa', fontSize: '14px', textAlign: 'center' }}>No hint requests yet.</p>
                     ) : (
                         <>
-                            {hintHistory.map((h, i) => {
-                                const lc = hintLevelColors[h.hintLevel] || hintLevelColors.L1
+                            {hintHistory.map((hint, index) => {
+                                const hintColor = hintLevelColors[hint.hintLevel] || hintLevelColors.L1
                                 return (
                                     <div
-                                        key={h.id}
+                                        key={hint.id}
                                         style={{
                                             display: 'flex',
                                             alignItems: 'center',
                                             justifyContent: 'space-between',
                                             padding: '12px 20px',
-                                            borderBottom: i < hintHistory.length - 1 ? '1px solid #f5f5f5' : 'none',
+                                            borderBottom: index < hintHistory.length - 1 ? '1px solid #f5f5f5' : 'none',
                                         }}
                                     >
                                         <div>
-                                            <p style={{ margin: '0 0 2px', fontSize: '14px', fontWeight: '500', color: '#1a1a2e' }}>{h.assignmentTitle}</p>
+                                            <p style={{ margin: '0 0 2px', fontSize: '14px', fontWeight: '500', color: '#1a1a2e' }}>{hint.assignmentTitle}</p>
                                             <p style={{ margin: 0, fontSize: '12px', color: '#888' }}>
-                                                {h.courseCode} · {new Date(h.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                                {hint.courseCode} · {new Date(hint.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
                                             </p>
                                         </div>
                                         <span
@@ -715,12 +737,12 @@ function Dashboard() {
                                                 borderRadius: '20px',
                                                 fontSize: '12px',
                                                 fontWeight: '500',
-                                                background: lc.bg,
-                                                color: lc.color,
-                                                border: `1px solid ${lc.border}`,
+                                                background: hintColor.bg,
+                                                color: hintColor.color,
+                                                border: `1px solid ${hintColor.border}`,
                                             }}
                                         >
-                                            {lc.label}
+                                            {hintColor.label}
                                         </span>
                                     </div>
                                 )
@@ -749,8 +771,8 @@ function Dashboard() {
                     {ownFlags.length === 0 ? (
                         <p style={{ padding: '1.5rem', color: '#aaa', fontSize: '14px', textAlign: 'center' }}>No flags on your account.</p>
                     ) : (
-                        ownFlags.map((flag, i) => {
-                            const sc = statusColors[flag.status] || statusColors.pending
+                        ownFlags.map((flag, index) => {
+                            const statusColor = statusColors[flag.status] || statusColors.pending
                             return (
                                 <div
                                     key={flag.id}
@@ -759,7 +781,7 @@ function Dashboard() {
                                         alignItems: 'center',
                                         justifyContent: 'space-between',
                                         padding: '14px 20px',
-                                        borderBottom: i < ownFlags.length - 1 ? '1px solid #f5f5f5' : 'none',
+                                        borderBottom: index < ownFlags.length - 1 ? '1px solid #f5f5f5' : 'none',
                                     }}
                                 >
                                     <div>
@@ -776,29 +798,13 @@ function Dashboard() {
                                                 borderRadius: '20px',
                                                 fontSize: '12px',
                                                 fontWeight: '500',
-                                                background: sc.bg,
-                                                color: sc.color,
-                                                border: `1px solid ${sc.border}`,
+                                                background: statusColor.bg,
+                                                color: statusColor.color,
+                                                border: `1px solid ${statusColor.border}`,
                                             }}
                                         >
                                             {flag.status.charAt(0).toUpperCase() + flag.status.slice(1)}
                                         </span>
-                                        {flag.status === 'notified' && (
-                                            <button
-                                                onClick={() => navigate('/appeal')}
-                                                style={{
-                                                    padding: '4px 10px',
-                                                    borderRadius: '6px',
-                                                    fontSize: '12px',
-                                                    background: '#1a5fa8',
-                                                    color: 'white',
-                                                    border: 'none',
-                                                    cursor: 'pointer',
-                                                }}
-                                            >
-                                                Appeal
-                                            </button>
-                                        )}
                                     </div>
                                 </div>
                             )

@@ -1,127 +1,308 @@
-import { useState, useEffect, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+
+const API_BASE = import.meta.env.VITE_API_BASE_URL || ''
+
+function detectDeviceType() {
+    if (window.matchMedia('(pointer: coarse)').matches) {
+        return 'tablet'
+    }
+
+    return window.innerWidth >= 1400 ? 'desktop' : 'laptop'
+}
+
+async function apiPost(path, body, extraHeaders = {}) {
+    const token = localStorage.getItem('token')
+    const res = await fetch(`${API_BASE}${path}`, {
+        method: 'POST',
+        headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+            ...extraHeaders,
+        },
+        body: typeof body === 'string' ? body : JSON.stringify(body),
+    })
+
+    const data = await res.json().catch(() => ({}))
+
+    if (!res.ok) {
+        throw new Error(data.message || `POST ${path} failed`)
+    }
+
+    return data
+}
+
+function toHex(buffer) {
+    return Array.from(new Uint8Array(buffer))
+        .map((value) => value.toString(16).padStart(2, '0'))
+        .join('')
+}
 
 function Editor() {
+    const [searchParams] = useSearchParams()
+    const assignmentId = searchParams.get('assignmentId')
     const [text, setText] = useState('')
-    const [status, setStatus] = useState('Session started. You may begin typing.')
+    const [status, setStatus] = useState('Preparing monitored session...')
     const [submitted, setSubmitted] = useState(false)
     const [showConfirm, setShowConfirm] = useState(false)
-
-    // ── Fake session (remove when backend is ready) ───────────────────────────
-    const sessionId = 'fake-session-001'
-    const hmacKey = 'fake-hmac-key'
-    // ─────────────────────────────────────────────────────────────────────────
+    const [session, setSession] = useState(null)
+    const [error, setError] = useState('')
+    const [submitting, setSubmitting] = useState(false)
 
     const events = useRef([])
     const keyDownTimes = useRef({})
     const lastKeyUpTime = useRef(null)
-    const navigate = useNavigate()
-    const token = localStorage.getItem('token')
+    const cumulativePasteChars = useRef(0)
+    const flushPromise = useRef(null)
+    const signingKey = useRef(null)
 
-    // Capture keydown
-    const handleKeyDown = (e) => {
-        if (submitted) return
-        if (!keyDownTimes.current[e.key]) {
-            keyDownTimes.current[e.key] = Date.now()
+    const navigate = useNavigate()
+
+    const importSigningKey = useCallback(async (secret) => {
+        if (signingKey.current?.secret === secret) {
+            return signingKey.current.key
+        }
+
+        const key = await window.crypto.subtle.importKey(
+            'raw',
+            new TextEncoder().encode(secret),
+            { name: 'HMAC', hash: 'SHA-256' },
+            false,
+            ['sign']
+        )
+
+        signingKey.current = { secret, key }
+        return key
+    }, [])
+
+    const signTelemetryBody = useCallback(async (secret, rawBody) => {
+        const key = await importSigningKey(secret)
+        const signature = await window.crypto.subtle.sign('HMAC', key, new TextEncoder().encode(rawBody))
+        return toHex(signature)
+    }, [importSigningKey])
+
+    const flushEvents = useCallback(async () => {
+        if (flushPromise.current) {
+            return flushPromise.current
+        }
+
+        if (!session?.id || !session.hmacKey || events.current.length === 0) {
+            return null
+        }
+
+        const pendingEvents = events.current.slice()
+
+        flushPromise.current = (async () => {
+            const rawBody = JSON.stringify({
+                sessionId: session.id,
+                events: pendingEvents,
+            })
+            const signature = await signTelemetryBody(session.hmacKey, rawBody)
+
+            await apiPost('/api/telemetry/payloads', rawBody, {
+                'x-telemetry-signature': signature,
+            })
+
+            events.current = events.current.slice(pendingEvents.length)
+            setStatus(`Last sync: ${new Date().toLocaleTimeString()}`)
+        })()
+            .catch((flushError) => {
+                setError(flushError.message || 'Failed to sync telemetry.')
+                throw flushError
+            })
+            .finally(() => {
+                flushPromise.current = null
+            })
+
+        return flushPromise.current
+    }, [session, signTelemetryBody])
+
+    useEffect(() => {
+        let cancelled = false
+
+        async function openSession() {
+            if (!assignmentId) {
+                setError('Missing assignmentId in the editor URL.')
+                setStatus('Cannot start telemetry session.')
+                return
+            }
+
+            try {
+                setError('')
+                const response = await apiPost('/api/telemetry/sessions', {
+                    assignmentId,
+                    deviceType: detectDeviceType(),
+                    screenResolution: `${window.screen.width}x${window.screen.height}`,
+                })
+
+                if (!cancelled) {
+                    setSession(response.session)
+                    setStatus('Session started. You may begin typing.')
+                }
+            } catch (sessionError) {
+                if (!cancelled) {
+                    setError(sessionError.message || 'Failed to create telemetry session.')
+                    setStatus('Unable to start telemetry session.')
+                }
+            }
+        }
+
+        openSession()
+
+        return () => {
+            cancelled = true
+        }
+    }, [assignmentId])
+
+    useEffect(() => {
+        if (!session?.id || submitted) {
+            return undefined
+        }
+
+        const interval = window.setInterval(() => {
+            flushEvents().catch(() => {})
+        }, 5000)
+
+        return () => window.clearInterval(interval)
+    }, [flushEvents, session, submitted])
+
+    useEffect(() => {
+        if (!session?.id || submitted) {
+            return undefined
+        }
+
+        const handleBlur = () => {
+            events.current.push({
+                type: 'blur',
+                blurCountDelta: 1,
+                timestamp: new Date().toISOString(),
+            })
+        }
+
+        window.addEventListener('blur', handleBlur)
+        return () => window.removeEventListener('blur', handleBlur)
+    }, [session, submitted])
+
+    const handleKeyDown = (event) => {
+        if (submitted || !session?.id) {
+            return
+        }
+
+        if (!keyDownTimes.current[event.code]) {
+            keyDownTimes.current[event.code] = Date.now()
         }
     }
 
-    // Capture keyup
-    const handleKeyUp = (e) => {
-        if (submitted) return
-        const downTime = keyDownTimes.current[e.key]
-        if (!downTime) return
+    const handleKeyUp = (event) => {
+        if (submitted || !session?.id) {
+            return
+        }
 
-        const dwellTime = Date.now() - downTime
+        const downTime = keyDownTimes.current[event.code]
+
+        if (!downTime) {
+            return
+        }
+
+        const now = Date.now()
+        const dwellTime = now - downTime
         const flightTime = lastKeyUpTime.current ? downTime - lastKeyUpTime.current : null
 
         events.current.push({
             type: 'keystroke',
-            key: e.key,
+            code: event.code,
             dwellTime,
             flightTime,
-            timestamp: new Date().toISOString()
+            timestamp: new Date(now).toISOString(),
         })
 
-        lastKeyUpTime.current = Date.now()
-        delete keyDownTimes.current[e.key]
+        lastKeyUpTime.current = now
+        delete keyDownTimes.current[event.code]
     }
 
-    // Capture paste
-    const handlePaste = () => {
-        if (submitted) return
-        events.current.push({ type: 'paste', timestamp: new Date().toISOString() })
-    }
-
-    // Capture blur
-    useEffect(() => {
-        const handleBlur = () => {
-            if (submitted) return
-            events.current.push({ type: 'blur', timestamp: new Date().toISOString() })
+    const handlePaste = (event) => {
+        if (submitted || !session?.id) {
+            return
         }
-        window.addEventListener('blur', handleBlur)
-        return () => window.removeEventListener('blur', handleBlur)
-    }, [submitted])
 
-    // Batch telemetry send every 5 seconds
-    // ── Skipping real API call (uncomment when backend is ready) ─────────────
-    // useEffect(() => {
-    //   if (!sessionId || !hmacKey) return
-    //   const interval = setInterval(async () => {
-    //     if (events.current.length === 0) return
-    //     ... HMAC signing + fetch to /api/telemetry/payloads ...
-    //   }, 5000)
-    //   return () => clearInterval(interval)
-    // }, [sessionId, hmacKey])
-    // ─────────────────────────────────────────────────────────────────────────
+        const pastedText = event.clipboardData?.getData('text') || ''
+        const pasteChars = pastedText.length
+        cumulativePasteChars.current += pasteChars
 
-    // Fake telemetry sync status every 5 seconds
-    useEffect(() => {
-        if (submitted) return
-        const interval = setInterval(() => {
-            if (events.current.length > 0) {
-                events.current = []
-                setStatus(`Last sync: ${new Date().toLocaleTimeString()}`)
-            }
-        }, 5000)
-        return () => clearInterval(interval)
-    }, [submitted])
+        events.current.push({
+            type: 'paste',
+            pasteChars,
+            cumulativePasteChars: cumulativePasteChars.current,
+            timestamp: new Date().toISOString(),
+        })
+    }
 
     const handleSubmit = () => {
         if (text.trim().length === 0) {
-            alert('Please write something before submitting.')
+            setError('Please write something before submitting.')
             return
         }
+
+        setError('')
         setShowConfirm(true)
     }
 
-    const handleConfirmSubmit = () => {
-        // ── Skip API call (uncomment when backend is ready) ──
-        // await fetch('http://localhost:4000/api/submissions', { ... })
-        setShowConfirm(false)
-        setSubmitted(true)
-        setStatus('Assignment submitted. Session locked.')
+    const handleConfirmSubmit = async () => {
+        if (!session?.id) {
+            setError('Telemetry session is not ready yet.')
+            return
+        }
 
-        navigate('/dashboard')
+        try {
+            setSubmitting(true)
+            setError('')
+            await flushEvents()
+            await apiPost(`/api/telemetry/sessions/${session.id}/complete`, {})
+            setShowConfirm(false)
+            setSubmitted(true)
+            setStatus('Assignment submitted. Session locked.')
+            navigate('/dashboard')
+        } catch (submitError) {
+            setError(submitError.message || 'Failed to complete the telemetry session.')
+        } finally {
+            setSubmitting(false)
+        }
     }
 
-    return (
-        <div style={{
-            minHeight: '100vh',
-            background: 'linear-gradient(135deg, #1a5fa8 0%, #3b8fd4 50%, #7bbfe8 100%)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem'
-        }}>
+    const isEditorLocked = submitted || submitting || !session?.id
 
-            {/* Confirm submit modal */}
+    return (
+        <div
+            style={{
+                minHeight: '100vh',
+                background: 'linear-gradient(135deg, #1a5fa8 0%, #3b8fd4 50%, #7bbfe8 100%)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '2rem',
+            }}
+        >
             {showConfirm && (
-                <div style={{
-                    position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100
-                }}>
-                    <div style={{
-                        background: 'white', borderRadius: '12px', padding: '2rem',
-                        width: '380px', margin: '1rem'
-                    }}>
+                <div
+                    style={{
+                        position: 'fixed',
+                        inset: 0,
+                        background: 'rgba(0,0,0,0.5)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        zIndex: 100,
+                    }}
+                >
+                    <div
+                        style={{
+                            background: 'white',
+                            borderRadius: '12px',
+                            padding: '2rem',
+                            width: '380px',
+                            margin: '1rem',
+                        }}
+                    >
                         <p style={{ margin: '0 0 8px', fontWeight: '600', fontSize: '16px' }}>Submit Assignment?</p>
                         <p style={{ margin: '0 0 1.5rem', fontSize: '14px', color: '#666' }}>
                             Once submitted, you cannot edit your response. Are you sure?
@@ -129,20 +310,34 @@ function Editor() {
                         <div style={{ display: 'flex', gap: '10px' }}>
                             <button
                                 onClick={handleConfirmSubmit}
+                                disabled={submitting}
                                 style={{
-                                    flex: 1, padding: '10px', background: '#1a5fa8', color: 'white',
-                                    border: 'none', borderRadius: '6px', fontSize: '14px',
-                                    fontWeight: '500', cursor: 'pointer'
+                                    flex: 1,
+                                    padding: '10px',
+                                    background: '#1a5fa8',
+                                    color: 'white',
+                                    border: 'none',
+                                    borderRadius: '6px',
+                                    fontSize: '14px',
+                                    fontWeight: '500',
+                                    cursor: 'pointer',
                                 }}
                             >
-                                Yes, Submit
+                                {submitting ? 'Submitting...' : 'Yes, Submit'}
                             </button>
                             <button
                                 onClick={() => setShowConfirm(false)}
+                                disabled={submitting}
                                 style={{
-                                    flex: 1, padding: '10px', background: 'white', color: '#666',
-                                    border: '1px solid #ddd', borderRadius: '6px', fontSize: '14px',
-                                    fontWeight: '500', cursor: 'pointer'
+                                    flex: 1,
+                                    padding: '10px',
+                                    background: 'white',
+                                    color: '#666',
+                                    border: '1px solid #ddd',
+                                    borderRadius: '6px',
+                                    fontSize: '14px',
+                                    fontWeight: '500',
+                                    cursor: 'pointer',
                                 }}
                             >
                                 Cancel
@@ -153,61 +348,111 @@ function Editor() {
             )}
 
             <div style={{ width: '700px', background: 'white', borderRadius: '12px', padding: '2rem' }}>
-
-                {/* Header */}
-                <div style={{
-                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                    marginBottom: '1rem', paddingBottom: '1rem', borderBottom: '1px solid #eee'
-                }}>
+                <div
+                    style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        marginBottom: '1rem',
+                        paddingBottom: '1rem',
+                        borderBottom: '1px solid #eee',
+                    }}
+                >
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <div style={{
-                            width: '36px', height: '36px', background: '#1a5fa8', borderRadius: '6px',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center'
-                        }}>
+                        <div
+                            style={{
+                                width: '36px',
+                                height: '36px',
+                                background: '#1a5fa8',
+                                borderRadius: '6px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                            }}
+                        >
                             <span style={{ color: 'white', fontSize: '13px', fontWeight: '500' }}>GR</span>
                         </div>
                         <p style={{ margin: 0, fontWeight: '500', fontSize: '15px' }}>Assignment Editor</p>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                         {submitted && (
-                            <span style={{
-                                fontSize: '12px', fontWeight: '500', padding: '3px 10px', borderRadius: '20px',
-                                background: '#f0fdf4', color: '#27ae60', border: '1px solid #bbf7d0'
-                            }}>
-                                ✅ Submitted
+                            <span
+                                style={{
+                                    fontSize: '12px',
+                                    fontWeight: '500',
+                                    padding: '3px 10px',
+                                    borderRadius: '20px',
+                                    background: '#f0fdf4',
+                                    color: '#27ae60',
+                                    border: '1px solid #bbf7d0',
+                                }}
+                            >
+                                Submitted
                             </span>
                         )}
                         <p style={{ margin: 0, fontSize: '12px', color: '#888' }}>{status}</p>
                     </div>
                 </div>
 
-                {/* Submitted banner */}
-                {submitted && (
-                    <div style={{
-                        background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px',
-                        padding: '12px 16px', marginBottom: '1rem', fontSize: '14px', color: '#27ae60'
-                    }}>
-                        ✅ Your assignment has been submitted successfully. This session is now locked.
+                {error && (
+                    <div
+                        style={{
+                            background: '#fef2f2',
+                            border: '1px solid #fecaca',
+                            color: '#b91c1c',
+                            padding: '10px 12px',
+                            borderRadius: '8px',
+                            marginBottom: '1rem',
+                            fontSize: '13px',
+                        }}
+                    >
+                        {error}
                     </div>
                 )}
 
-                {/* Text area */}
+                {submitted && (
+                    <div
+                        style={{
+                            background: '#f0fdf4',
+                            border: '1px solid #bbf7d0',
+                            borderRadius: '8px',
+                            padding: '12px 16px',
+                            marginBottom: '1rem',
+                            fontSize: '14px',
+                            color: '#27ae60',
+                        }}
+                    >
+                        Your assignment has been submitted successfully. This session is now locked.
+                    </div>
+                )}
+
                 <textarea
                     value={text}
-                    onChange={(e) => { if (!submitted) setText(e.target.value) }}
+                    onChange={(event) => {
+                        if (!submitted) {
+                            setText(event.target.value)
+                        }
+                    }}
                     onKeyDown={handleKeyDown}
                     onKeyUp={handleKeyUp}
                     onPaste={handlePaste}
-                    placeholder={submitted ? 'Session locked.' : 'Start typing your assignment here...'}
-                    disabled={submitted}
+                    placeholder={isEditorLocked ? 'Session is preparing...' : 'Start typing your assignment here...'}
+                    disabled={isEditorLocked}
                     style={{
-                        width: '100%', height: '350px', padding: '1rem',
-                        fontSize: '15px', lineHeight: '1.7', border: '1px solid #ddd',
-                        borderRadius: '8px', resize: 'none', boxSizing: 'border-box',
-                        fontFamily: 'inherit', outline: 'none',
-                        background: submitted ? '#f9f9f9' : 'white',
-                        color: submitted ? '#999' : '#1a1a2e',
-                        cursor: submitted ? 'not-allowed' : 'text'
+                        width: '100%',
+                        height: '350px',
+                        padding: '1rem',
+                        fontSize: '15px',
+                        lineHeight: '1.7',
+                        border: '1px solid #ddd',
+                        borderRadius: '8px',
+                        resize: 'none',
+                        boxSizing: 'border-box',
+                        fontFamily: 'inherit',
+                        outline: 'none',
+                        background: isEditorLocked ? '#f9f9f9' : 'white',
+                        color: isEditorLocked ? '#999' : '#1a1a2e',
+                        cursor: isEditorLocked ? 'not-allowed' : 'text',
                     }}
                 />
 
@@ -215,26 +460,33 @@ function Editor() {
                     <button
                         onClick={() => navigate('/dashboard')}
                         style={{
-                            padding: '8px 20px', background: 'white', color: '#1a5fa8',
-                            border: '1px solid #1a5fa8', borderRadius: '6px', cursor: 'pointer', fontSize: '14px'
+                            padding: '8px 20px',
+                            background: 'white',
+                            color: '#1a5fa8',
+                            border: '1px solid #1a5fa8',
+                            borderRadius: '6px',
+                            cursor: 'pointer',
+                            fontSize: '14px',
                         }}
                     >
                         Back to Dashboard
                     </button>
                     <button
                         onClick={handleSubmit}
-                        disabled={submitted}
+                        disabled={isEditorLocked}
                         style={{
                             padding: '8px 20px',
-                            background: submitted ? '#ccc' : '#1a5fa8',
-                            color: 'white', border: 'none', borderRadius: '6px',
-                            cursor: submitted ? 'not-allowed' : 'pointer', fontSize: '14px'
+                            background: isEditorLocked ? '#ccc' : '#1a5fa8',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '6px',
+                            cursor: isEditorLocked ? 'not-allowed' : 'pointer',
+                            fontSize: '14px',
                         }}
                     >
-                        {submitted ? 'Submitted' : 'Submit Assignment'}
+                        {submitting ? 'Submitting...' : submitted ? 'Submitted' : 'Submit Assignment'}
                     </button>
                 </div>
-
             </div>
         </div>
     )

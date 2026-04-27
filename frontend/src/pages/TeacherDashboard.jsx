@@ -571,7 +571,7 @@ function CoursePanel({ course, navigate, onCreateAssignment, onAddStudent }) {
                                     </div>
                                 </div>
                                 <button
-                                    onClick={() => navigate(`/teacher/student/${student.id}`)}
+                                    onClick={() => navigate(`/teacher/student/${student.id}?courseId=${course.id}`)}
                                     style={{
                                         padding: '5px 14px',
                                         borderRadius: '6px',
@@ -643,9 +643,9 @@ function TeacherDashboard() {
                         id: e.student?.id || e.studentId,
                         displayName: e.student?.displayName || 'Student',
                         email: e.student?.email || '',
-                        sessions: 0,
-                        calibrated: false,
-                        pendingFlags: 0,
+                        sessions: e.sessionCount || 0,
+                        calibrated: Boolean(e.isCalibrated),
+                        pendingFlags: e.pendingFlags || 0,
                         hintsUsed: 0,
                     }))
 

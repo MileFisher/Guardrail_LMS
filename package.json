@@ -1,0 +1,18 @@
+{
+  "name": "guardrail-lms-workspace",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "db:up": "docker compose -f backend/docker-compose.yml up -d",
+    "db:down": "docker compose -f backend/docker-compose.yml down",
+    "db:seed": "npm --prefix backend run db:seed",
+    "dev:with-db": "npm run db:up && npm run dev",
+    "setup:dev": "npm run db:up && npm run db:seed && npm run dev",
+    "dev": "concurrently -n backend,frontend -c cyan,magenta \"npm --prefix backend run dev\" \"npm --prefix frontend run dev\"",
+    "dev:backend": "npm --prefix backend run dev",
+    "dev:frontend": "npm --prefix frontend run dev"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}
