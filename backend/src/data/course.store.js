@@ -158,11 +158,31 @@ async function listEnrollmentsByCourse(courseId) {
        e.student_id,
        e.enrolled_at,
        u.display_name,
-       u.email
-     FROM enrollments e
-     JOIN users u ON u.id = e.student_id
-     WHERE e.course_id = $1
-     ORDER BY e.enrolled_at ASC`,
+       u.email,
+       COALESCE(baseline.session_count, 0) AS session_count,
+       COALESCE(baseline.is_calibrated, FALSE) AS is_calibrated,
+       COALESCE(flags.pending_flags, 0) AS pending_flags
+      FROM enrollments e
+      JOIN users u ON u.id = e.student_id
+      LEFT JOIN LATERAL (
+        SELECT
+          COALESCE(MAX(sb.session_count), 0) AS session_count,
+          COALESCE(BOOL_OR(sb.is_calibrated), FALSE) AS is_calibrated
+        FROM student_baselines sb
+        WHERE sb.student_id = e.student_id
+          AND sb.course_id = e.course_id
+      ) baseline ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT COUNT(*)::int AS pending_flags
+        FROM anomaly_flags af
+        JOIN writing_sessions ws ON ws.id = af.session_id
+        JOIN assignments a ON a.id = ws.assignment_id
+        WHERE af.student_id = e.student_id
+          AND a.course_id = e.course_id
+          AND af.status = 'pending'
+      ) flags ON TRUE
+      WHERE e.course_id = $1
+      ORDER BY e.enrolled_at ASC`,
     [courseId]
   );
 
@@ -171,6 +191,9 @@ async function listEnrollmentsByCourse(courseId) {
     courseId: row.course_id,
     studentId: row.student_id,
     enrolledAt: row.enrolled_at,
+    sessionCount: Number(row.session_count || 0),
+    isCalibrated: row.is_calibrated,
+    pendingFlags: Number(row.pending_flags || 0),
     student: {
       id: row.student_id,
       displayName: row.display_name,

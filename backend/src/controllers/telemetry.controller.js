@@ -1,4 +1,11 @@
-const { openTelemetrySession, storeTelemetryPayload } = require("../services/telemetry.service");
+const {
+  completeTelemetrySession,
+  listOwnBaselines,
+  listOwnTelemetrySessions,
+  openTelemetrySession,
+  reprocessTelemetrySession,
+  storeTelemetryPayload
+} = require("../services/telemetry.service");
 
 async function createSession(req, res, next) {
   try {
@@ -58,7 +65,75 @@ async function ingestPayload(req, res, next) {
   }
 }
 
+async function listSessions(req, res, next) {
+  try {
+    if (req.query.mine !== "true") {
+      const error = new Error("Only mine=true is supported.");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const sessions = await listOwnTelemetrySessions(req.user);
+    return res.status(200).json({ sessions });
+  } catch (error) {
+    return next(error);
+  }
+}
+
+async function listBaselines(req, res, next) {
+  try {
+    if (req.query.mine !== "true") {
+      const error = new Error("Only mine=true is supported.");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const baselines = await listOwnBaselines(req.user);
+    return res.status(200).json({ baselines });
+  } catch (error) {
+    return next(error);
+  }
+}
+
+async function completeSession(req, res, next) {
+  try {
+    const session = await completeTelemetrySession({
+      sessionId: req.params.sessionId,
+      user: req.user
+    });
+
+    return res.status(202).json({
+      message: "Telemetry session completed. Analysis queued.",
+      sessionId: session.id,
+      status: session.status
+    });
+  } catch (error) {
+    return next(error);
+  }
+}
+
+async function reprocessSession(req, res, next) {
+  try {
+    const session = await reprocessTelemetrySession({
+      sessionId: req.params.sessionId,
+      actor: req.user
+    });
+
+    return res.status(202).json({
+      message: "Telemetry session analysis queued.",
+      sessionId: session.id,
+      status: session.status
+    });
+  } catch (error) {
+    return next(error);
+  }
+}
+
 module.exports = {
+  completeSession,
   createSession,
-  ingestPayload
+  ingestPayload,
+  listBaselines,
+  listSessions,
+  reprocessSession
 };
