@@ -1,17 +1,22 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
-const fakePolicy = {
-    version: '1.0',
-    contentMarkdown:
-        'Your typing behaviour will be monitored to ensure academic integrity. All data is stored securely and only accessible to your teacher.',
-}
+const API_BASE = import.meta.env.VITE_API_BASE_URL || ''
 
 function Consent({ onAccepted, onDeclined }) {
-    const [policy] = useState(fakePolicy)
+    const [policy, setPolicy] = useState(null)
+
+     useEffect(() => {
+        fetch(`${API_BASE}/api/consent/policy`)
+            .then(res => res.json())
+            .then(data => setPolicy(data.policy))
+            .catch(() => {})
+    }, [])
 
     const handleAccept = () => {
         onAccepted()
     }
+
+    if (!policy) return null
 
     return (
         <div

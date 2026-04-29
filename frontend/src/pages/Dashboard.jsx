@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useMemo, useState, useRef } from 'react'
+import { useNavigate, useLocation } from 'react-router-dom'
 import Consent from './Consent'
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || ''
@@ -17,10 +17,7 @@ const hintLevelColors = {
 }
 
 function formatDeviceType(deviceType) {
-    if (!deviceType) {
-        return 'Unknown device'
-    }
-
+    if (!deviceType) return 'Unknown device'
     return deviceType.charAt(0).toUpperCase() + deviceType.slice(1)
 }
 
@@ -34,11 +31,11 @@ function WpmTrendChart({ sessions }) {
     }
 
     const W = 340
-    const H = 80
-    const PAD = { t: 8, r: 16, b: 24, l: 32 }
+    const H = 110
+    const PAD = { t: 10, r: 16, b: 24, l: 32 }
 
-    const maxWpm = Math.max(...sessions.map((session) => session.wpm)) + 5
-    const minWpm = Math.max(0, Math.min(...sessions.map((session) => session.wpm)) - 5)
+    const maxWpm = Math.max(...sessions.map((s) => s.wpm)) + 5
+    const minWpm = Math.max(0, Math.min(...sessions.map((s) => s.wpm)) - 5)
     const xStep = sessions.length > 1 ? (W - PAD.l - PAD.r) / (sessions.length - 1) : 0
 
     const yScale = (wpm) =>
@@ -49,7 +46,8 @@ function WpmTrendChart({ sessions }) {
         y: yScale(session.wpm),
         ...session,
     }))
-    const linePath = points.map((point, index) => `${index === 0 ? 'M' : 'L'}${point.x},${point.y}`).join(' ')
+
+    const linePath = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x},${p.y}`).join(' ')
     const areaPath = `${linePath} L${points[points.length - 1].x},${H - PAD.b} L${points[0].x},${H - PAD.b} Z`
 
     return (
@@ -75,16 +73,22 @@ function WpmTrendChart({ sessions }) {
             })}
 
             <path d={areaPath} fill="url(#wpmGrad)" />
-            <path d={linePath} fill="none" stroke="#1a5fa8" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+            <path d={linePath} fill="none" stroke="#1a5fa8" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
 
-            {points.map((point, index) => (
-                <g key={index}>
-                    <circle cx={point.x} cy={point.y} r="3.5" fill="white" stroke="#1a5fa8" strokeWidth="2" />
-                    <text x={point.x} y={H - 6} fontSize="9" fill="#aaa" textAnchor="middle">
-                        {point.date}
-                    </text>
-                </g>
-            ))}
+            {points.map((point, index) => {
+                const step = sessions.length > 20 ? 5 : sessions.length > 10 ? 3 : 1
+                const showLabel = index % step === 0 || index === points.length - 1
+                return (
+                    <g key={index}>
+                        <circle cx={point.x} cy={point.y} r="2" fill="white" stroke="#1a5fa8" strokeWidth="1.5" />
+                        {showLabel && (
+                            <text x={point.x} y={H - 6} fontSize="9" fill="#aaa" textAnchor="middle">
+                                {point.date}
+                            </text>
+                        )}
+                    </g>
+                )
+            })}
         </svg>
     )
 }
@@ -145,28 +149,49 @@ function AssignmentRow({ assignment, onOpen }) {
                 </div>
             </div>
 
-            <button
-                onClick={() => !isSubmitted && onOpen(assignment)}
-                style={{
-                    padding: '5px 16px',
-                    borderRadius: '6px',
-                    fontSize: '13px',
-                    fontWeight: '500',
-                    cursor: isSubmitted ? 'default' : 'pointer',
-                    border: 'none',
-                    background: isSubmitted ? '#f0fdf4' : '#1a5fa8',
-                    color: isSubmitted ? '#15803d' : 'white',
-                }}
-            >
-                {isSubmitted ? 'Submitted' : 'Open'}
-            </button>
+            <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                {!isSubmitted && (
+                    <a
+                        href={`/study?assignmentId=${assignment.id}&courseId=${assignment.courseId || ''}`}
+                        style={{
+                            padding: '5px 12px',
+                            borderRadius: '6px',
+                            fontSize: '12px',
+                            fontWeight: '500',
+                            border: '1px solid #d97706',
+                            background: '#fffbeb',
+                            color: '#d97706',
+                            textDecoration: 'none',
+                            cursor: 'pointer',
+                        }}
+                        title="Open Socratic AI Tutor study session"
+                    >
+                        💡 Study
+                    </a>
+                )}
+                <button
+                    onClick={() => !isSubmitted && onOpen(assignment)}
+                    style={{
+                        padding: '5px 16px',
+                        borderRadius: '6px',
+                        fontSize: '13px',
+                        fontWeight: '500',
+                        cursor: isSubmitted ? 'default' : 'pointer',
+                        border: 'none',
+                        background: isSubmitted ? '#f0fdf4' : '#1a5fa8',
+                        color: isSubmitted ? '#15803d' : 'white',
+                    }}
+                >
+                    {isSubmitted ? 'Submitted' : 'Open'}
+                </button>
+            </div>
         </div>
     )
 }
 
 function CourseCard({ course, onOpenAssignment }) {
     const [expanded, setExpanded] = useState(true)
-    const submitted = course.assignments.filter((assignment) => assignment.status === 'submitted').length
+    const submitted = course.assignments.filter((a) => a.status === 'submitted').length
 
     return (
         <div
@@ -179,7 +204,7 @@ function CourseCard({ course, onOpenAssignment }) {
             }}
         >
             <div
-                onClick={() => setExpanded((value) => !value)}
+                onClick={() => setExpanded((v) => !v)}
                 style={{
                     display: 'flex',
                     alignItems: 'center',
@@ -226,7 +251,9 @@ function CourseCard({ course, onOpenAssignment }) {
 
             {expanded &&
                 (course.assignments.length ? (
-                    course.assignments.map((assignment) => <AssignmentRow key={assignment.id} assignment={assignment} onOpen={onOpenAssignment} />)
+                    course.assignments.map((assignment) => (
+                        <AssignmentRow key={assignment.id} assignment={assignment} onOpen={onOpenAssignment} />
+                    ))
                 ) : (
                     <p style={{ padding: '1rem 1.25rem', margin: 0, color: '#999', fontSize: '13px' }}>No assignments yet.</p>
                 ))}
@@ -328,14 +355,13 @@ async function apiGet(path) {
         },
     })
     const data = await res.json().catch(() => ({}))
-    if (!res.ok) {
-        throw new Error(data.message || `Request failed: ${res.status}`)
-    }
+    if (!res.ok) throw new Error(data.message || `Request failed: ${res.status}`)
     return data
 }
 
 function Dashboard() {
     const navigate = useNavigate()
+    const location = useLocation()
     const user = JSON.parse(localStorage.getItem('user') || 'null')
 
     const [showConsent, setShowConsent] = useState(false)
@@ -348,6 +374,7 @@ function Dashboard() {
     const [totalSessions, setTotalSessions] = useState(0)
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState('')
+    const pendingAssignmentId = useRef(null)
 
     useEffect(() => {
         let mounted = true
@@ -421,33 +448,26 @@ function Dashboard() {
                             : `S${index + 1}`,
                     }))
 
-                if (!mounted) {
-                    return
-                }
+                if (!mounted) return
 
                 setCourses(mergedCourses)
                 setWpmSessions(safeWpm)
                 setHintHistory([])
                 setOwnFlags(flags)
-                setTotalSessions(sessions.filter((session) => session.status === 'completed' || session.status === 'submitted').length)
+                setTotalSessions(
+                    sessions.filter((s) => s.status === 'completed' || s.status === 'submitted').length
+                )
             } catch (loadError) {
-                if (!mounted) {
-                    return
-                }
-
+                if (!mounted) return
                 setError(loadError.message || 'Failed to load dashboard')
             } finally {
-                if (mounted) {
-                    setLoading(false)
-                }
+                if (mounted) setLoading(false)
             }
         }
 
         loadDashboard()
-        return () => {
-            mounted = false
-        }
-    }, [])
+        return () => { mounted = false }
+    }, [location.key])
 
     const allAssignments = useMemo(() => courses.flatMap((course) => course.assignments || []), [courses])
     const activeFlags = useMemo(() => ownFlags.filter((flag) => flag.status !== 'dismissed'), [ownFlags])
@@ -458,25 +478,36 @@ function Dashboard() {
     const handleOpenAssignment = (assignment) => {
         setSelectedAssignment(assignment)
         if (!localStorage.getItem('consentAccepted')) {
+            pendingAssignmentId.current = assignment.id
             setShowConsent(true)
         } else {
             navigate(`/editor?assignmentId=${assignment.id}`)
         }
     }
 
-    const handleConsentAccepted = () => {
+    const handleConsentAccepted = async () => {
+        try {
+            const token = localStorage.getItem('token')
+            await fetch(`${API_BASE}/api/consent/accept`, {
+                method: 'POST',
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                },
+            })
+        } catch (err) {
+            console.error('Failed to log consent:', err)
+        }
+
         localStorage.setItem('consentAccepted', 'true')
         setShowConsent(false)
-        if (selectedAssignment?.id) {
-            navigate(`/editor?assignmentId=${selectedAssignment.id}`)
-        }
+        navigate(`/editor?assignmentId=${pendingAssignmentId.current}`)
     }
 
     const handleConsentDeclined = () => {
         setShowConsent(false)
-        localStorage.removeItem('token')
-        localStorage.removeItem('user')
-        navigate('/login')
+        pendingAssignmentId.current = null
+        navigate('/dashboard')
     }
 
     if (loading) {
@@ -609,7 +640,7 @@ function Dashboard() {
                     {[
                         { label: 'Courses', value: courses.length },
                         { label: 'Assignments', value: allAssignments.length },
-                        { label: 'Submitted', value: allAssignments.filter((assignment) => assignment.status === 'submitted').length },
+                        { label: 'Submitted', value: allAssignments.filter((a) => a.status === 'submitted').length },
                         { label: 'Sessions', value: totalSessions },
                     ].map((stat) => (
                         <div
@@ -630,37 +661,21 @@ function Dashboard() {
                     ))}
                 </div>
 
-                <p
-                    style={{
-                        fontSize: '13px',
-                        fontWeight: '600',
-                        color: '#888',
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.6px',
-                        margin: '0 0 12px',
-                    }}
-                >
+                <p style={{ fontSize: '13px', fontWeight: '600', color: '#888', textTransform: 'uppercase', letterSpacing: '0.6px', margin: '0 0 12px' }}>
                     My Courses
                 </p>
 
                 {courses.length ? (
-                    courses.map((course) => <CourseCard key={course.id} course={course} onOpenAssignment={handleOpenAssignment} />)
+                    courses.map((course) => (
+                        <CourseCard key={course.id} course={course} onOpenAssignment={handleOpenAssignment} />
+                    ))
                 ) : (
                     <div style={{ background: 'white', borderRadius: '10px', padding: '1rem', color: '#999', fontSize: '14px' }}>
                         No enrolled courses yet.
                     </div>
                 )}
 
-                <p
-                    style={{
-                        fontSize: '13px',
-                        fontWeight: '600',
-                        color: '#888',
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.6px',
-                        margin: '1.5rem 0 12px',
-                    }}
-                >
+                <p style={{ fontSize: '13px', fontWeight: '600', color: '#888', textTransform: 'uppercase', letterSpacing: '0.6px', margin: '1.5rem 0 12px' }}>
                     My Typing Activity
                 </p>
 
@@ -679,7 +694,8 @@ function Dashboard() {
                                 Words Per Minute - Trend
                             </p>
                             <p style={{ margin: 0, fontSize: '12px', color: '#888' }}>
-                                Across {wpmSessions.length} sessions - Current: <strong style={{ color: '#1a5fa8' }}>{currentWpm} WPM</strong>
+                                Across {wpmSessions.length} sessions - Current:{' '}
+                                <strong style={{ color: '#1a5fa8' }}>{currentWpm} WPM</strong>
                                 <span style={{ marginLeft: '6px', color: wpmDelta >= 0 ? '#15803d' : '#dc2626', fontWeight: '600' }}>
                                     {wpmDelta >= 0 ? '▲' : '▼'} {Math.abs(wpmDelta)} from first session
                                 </span>
@@ -694,16 +710,7 @@ function Dashboard() {
                     </p>
                 </div>
 
-                <p
-                    style={{
-                        fontSize: '13px',
-                        fontWeight: '600',
-                        color: '#888',
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.6px',
-                        margin: '1.5rem 0 12px',
-                    }}
-                >
+                <p style={{ fontSize: '13px', fontWeight: '600', color: '#888', textTransform: 'uppercase', letterSpacing: '0.6px', margin: '1.5rem 0 12px' }}>
                     Hint Usage History
                 </p>
 
@@ -754,16 +761,7 @@ function Dashboard() {
                     )}
                 </div>
 
-                <p
-                    style={{
-                        fontSize: '13px',
-                        fontWeight: '600',
-                        color: '#888',
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.6px',
-                        margin: '1.5rem 0 12px',
-                    }}
-                >
+                <p style={{ fontSize: '13px', fontWeight: '600', color: '#888', textTransform: 'uppercase', letterSpacing: '0.6px', margin: '1.5rem 0 12px' }}>
                     My Flags
                 </p>
 

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || ''
@@ -9,6 +9,9 @@ function Register() {
     const [displayName, setDisplayName] = useState('')
     const [error, setError] = useState('')
     const navigate = useNavigate()
+
+    const emailRef = useRef(null)
+    const passwordRef = useRef(null)
 
     const handleRegister = async () => {
         try {
@@ -95,51 +98,65 @@ function Register() {
 
                     {/* Display Name */}
                     <div style={{ marginBottom: '12px' }}>
-                        <label style={{ fontSize: '13px', color: '#666' }}>Display Name</label>
+                        <label style={{ fontSize: '13px', color: '#666', display: 'block', marginBottom: '4px' }}>Display Name</label>
                         <input
                             type="text"
                             value={displayName}
                             onChange={(e) => setDisplayName(e.target.value)}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter') emailRef.current?.focus()
+                            }}
                             style={{
                                 width: '100%',
                                 padding: '8px 12px',
                                 border: '1px solid #ddd',
                                 borderRadius: '6px',
-                                fontSize: '14px'
+                                fontSize: '14px',
+                                boxSizing: 'border-box'
                             }}
                         />
                     </div>
 
                     {/* Email */}
                     <div style={{ marginBottom: '12px' }}>
-                        <label style={{ fontSize: '13px', color: '#666' }}>Email</label>
+                        <label style={{ fontSize: '13px', color: '#666', display: 'block', marginBottom: '4px' }}>Email</label>
                         <input
+                            ref={emailRef}
                             type="email"
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter') passwordRef.current?.focus()
+                            }}
                             style={{
                                 width: '100%',
                                 padding: '8px 12px',
                                 border: '1px solid #ddd',
                                 borderRadius: '6px',
-                                fontSize: '14px'
+                                fontSize: '14px',
+                                boxSizing: 'border-box'
                             }}
                         />
                     </div>
 
                     {/* Password */}
                     <div style={{ marginBottom: '1.5rem' }}>
-                        <label style={{ fontSize: '13px', color: '#666' }}>Password</label>
+                        <label style={{ fontSize: '13px', color: '#666', display: 'block', marginBottom: '4px' }}>Password</label>
                         <input
+                            ref={passwordRef}
                             type="password"
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter') handleRegister()
+                            }}
                             style={{
                                 width: '100%',
                                 padding: '8px 12px',
                                 border: '1px solid #ddd',
                                 borderRadius: '6px',
-                                fontSize: '14px'
+                                fontSize: '14px',
+                                boxSizing: 'border-box'
                             }}
                         />
                     </div>

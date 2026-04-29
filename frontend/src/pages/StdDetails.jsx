@@ -19,6 +19,24 @@ async function apiGet(path) {
     return data
 }
 
+async function apiPatch(path, body) {
+    const token = localStorage.getItem('token')
+    const res = await fetch(`${API_BASE}${path}`, {
+        method: 'PATCH',
+        headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+    })
+
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) {
+        throw new Error(data.message || `PATCH ${path} failed`)
+    }
+    return data
+}
+
 function formatZValue(value) {
     if (value === null || value === undefined || Number.isNaN(Number(value))) {
         return 'N/A'
@@ -85,10 +103,23 @@ function StdDetails() {
         }
     }, [courseId, studentId])
 
-    const handleFlagAction = (flagId, action) => {
-        setFlags((previous) => previous.map((flag) => (flag.id === flagId ? { ...flag, status: action } : flag)))
-        setActionMessage(`Flag ${action} successfully.`)
-        window.setTimeout(() => setActionMessage(''), 3000)
+    const [actionLoading, setActionLoading] = useState(null)
+
+    const handleFlagAction = async (flagId, action) => {
+        setActionLoading(flagId + action)
+        try {
+            await apiPatch(`/api/flags/${flagId}`, { status: action })
+            setFlags((previous) =>
+                previous.map((flag) => (flag.id === flagId ? { ...flag, status: action } : flag))
+            )
+            setActionMessage(`Flag ${action} successfully.`)
+            window.setTimeout(() => setActionMessage(""), 3000)
+        } catch (err) {
+            setActionMessage(`Error: ${err.message}`)
+            window.setTimeout(() => setActionMessage(""), 4000)
+        } finally {
+            setActionLoading(null)
+        }
     }
 
     if (loading) {
@@ -369,21 +400,24 @@ function StdDetails() {
                             >
                                 <button
                                     onClick={() => handleFlagAction(flag.id, 'dismissed')}
+                                    disabled={!!actionLoading}
                                     style={{
                                         padding: '8px 16px',
                                         borderRadius: '6px',
                                         border: '1px solid #bbf7d0',
                                         background: '#f0fdf4',
                                         color: '#27ae60',
-                                        cursor: 'pointer',
+                                        cursor: actionLoading ? 'not-allowed' : 'pointer',
                                         fontSize: '13px',
                                         fontWeight: '500',
+                                        opacity: actionLoading ? 0.6 : 1,
                                     }}
                                 >
-                                    Dismiss
+                                    {actionLoading === flag.id + 'dismissed' ? 'Saving...' : 'Dismiss'}
                                 </button>
                                 <button
                                     onClick={() => handleFlagAction(flag.id, 'escalated')}
+                                    disabled={!!actionLoading}
                                     style={{
                                         padding: '8px 16px',
                                         borderRadius: '6px',
@@ -395,7 +429,7 @@ function StdDetails() {
                                         fontWeight: '500',
                                     }}
                                 >
-                                    Escalate
+                                    {actionLoading === flag.id + 'escalated' ? 'Saving...' : 'Escalate'}
                                 </button>
                             </div>
                         )}

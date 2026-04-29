@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import Consent from './Consent'
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || ''
 
@@ -49,6 +50,8 @@ function Editor() {
     const [error, setError] = useState('')
     const [submitting, setSubmitting] = useState(false)
 
+    const [showConsent, setShowConsent] = useState(!localStorage.getItem('consentAccepted'))
+
     const events = useRef([])
     const keyDownTimes = useRef({})
     const lastKeyUpTime = useRef(null)
@@ -57,6 +60,28 @@ function Editor() {
     const signingKey = useRef(null)
 
     const navigate = useNavigate()
+
+    const handleConsentAccepted = async () => {
+        try {
+            const token = localStorage.getItem('token')
+            await fetch(`${API_BASE}/api/consent/accept`, {
+                method: 'POST',
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                },
+            })
+        } catch (err) {
+            console.error('Failed to log consent:', err)
+        }
+        localStorage.setItem('consentAccepted', 'true')
+        setShowConsent(false)
+    }
+
+    const handleConsentDeclined = () => {
+        setShowConsent(false)
+        navigate('/dashboard')
+    }
 
     const importSigningKey = useCallback(async (secret) => {
         if (signingKey.current?.secret === secret) {
@@ -127,6 +152,10 @@ function Editor() {
                 return
             }
 
+            if (showConsent) {
+                return
+            }
+
             try {
                 setError('')
                 const response = await apiPost('/api/telemetry/sessions', {
@@ -152,7 +181,7 @@ function Editor() {
         return () => {
             cancelled = true
         }
-    }, [assignmentId])
+    }, [assignmentId, showConsent])
 
     useEffect(() => {
         if (!session?.id || submitted) {
@@ -256,14 +285,41 @@ function Editor() {
         try {
             setSubmitting(true)
             setError('')
+
+            // 1. Flush any remaining telemetry events
             await flushEvents()
+
+            // 2. Upload essay text as a file to the backend
+            //    The backend stores it and returns a file_url (local or S3).
+            //    When Person A adds a real S3 presigned-URL endpoint, swap this
+            //    call for: GET /api/submissions/presign -> PUT to S3 -> pass s3Url below.
+            const blob = new Blob([text], { type: 'text/plain' })
+            const formData = new FormData()
+            formData.append('file', blob, `submission-${session.id}.txt`)
+            formData.append('sessionId', session.id)
+            formData.append('assignmentId', session.assignmentId || '')
+
+            const token = localStorage.getItem('token')
+            const uploadRes = await fetch(`${API_BASE}/api/submissions`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${token}` },
+                body: formData,
+            })
+
+            if (!uploadRes.ok) {
+                const uploadData = await uploadRes.json().catch(() => ({}))
+                throw new Error(uploadData.message || 'File upload failed.')
+            }
+
+            // 3. Mark telemetry session as complete and lock it
             await apiPost(`/api/telemetry/sessions/${session.id}/complete`, {})
+
             setShowConfirm(false)
             setSubmitted(true)
             setStatus('Assignment submitted. Session locked.')
             navigate('/dashboard')
         } catch (submitError) {
-            setError(submitError.message || 'Failed to complete the telemetry session.')
+            setError(submitError.message || 'Failed to submit assignment.')
         } finally {
             setSubmitting(false)
         }
@@ -282,6 +338,12 @@ function Editor() {
                 padding: '2rem',
             }}
         >
+            {showConsent && (
+                <Consent
+                    onAccepted={handleConsentAccepted}
+                    onDeclined={handleConsentDeclined}
+                />
+            )}
             {showConfirm && (
                 <div
                     style={{
@@ -307,6 +369,19 @@ function Editor() {
                         <p style={{ margin: '0 0 1.5rem', fontSize: '14px', color: '#666' }}>
                             Once submitted, you cannot edit your response. Are you sure?
                         </p>
+                        {error && (
+                            <div style={{
+                                background: '#fef2f2',
+                                border: '1px solid #fecaca',
+                                borderRadius: '6px',
+                                padding: '10px 12px',
+                                marginBottom: '1rem',
+                                fontSize: '13px',
+                                color: '#b91c1c',
+                            }}>
+                                {error}
+                            </div>
+                        )}
                         <div style={{ display: 'flex', gap: '10px' }}>
                             <button
                                 onClick={handleConfirmSubmit}
@@ -314,19 +389,19 @@ function Editor() {
                                 style={{
                                     flex: 1,
                                     padding: '10px',
-                                    background: '#1a5fa8',
+                                    background: submitting ? '#6b9fd4' : '#1a5fa8',
                                     color: 'white',
                                     border: 'none',
                                     borderRadius: '6px',
                                     fontSize: '14px',
                                     fontWeight: '500',
-                                    cursor: 'pointer',
+                                    cursor: submitting ? 'not-allowed' : 'pointer',
                                 }}
                             >
-                                {submitting ? 'Submitting...' : 'Yes, Submit'}
+                                {submitting ? 'Submitting...' : error ? 'Try Again' : 'Yes, Submit'}
                             </button>
                             <button
-                                onClick={() => setShowConfirm(false)}
+                                onClick={() => { setShowConfirm(false); setError('') }}
                                 disabled={submitting}
                                 style={{
                                     flex: 1,
@@ -337,7 +412,7 @@ function Editor() {
                                     borderRadius: '6px',
                                     fontSize: '14px',
                                     fontWeight: '500',
-                                    cursor: 'pointer',
+                                    cursor: submitting ? 'not-allowed' : 'pointer',
                                 }}
                             >
                                 Cancel

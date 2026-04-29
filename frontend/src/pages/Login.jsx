@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || ''
@@ -8,6 +8,8 @@ function Login() {
     const [password, setPassword] = useState('')
     const [error, setError] = useState('')
     const navigate = useNavigate()
+
+    const passwordRef = useRef(null)
 
     const handleLogin = async () => {
         try {
@@ -24,7 +26,9 @@ function Login() {
             localStorage.setItem('token', data.accessToken)
             localStorage.setItem('user', JSON.stringify(data.user))
 
-            if (data.user.role === 'teacher' || data.user.role === 'admin') {
+            if (data.user.role === 'admin') {
+                navigate('/admin')
+            } else if (data.user.role === 'teacher') {
                 navigate('/teacher/dashboard')
             } else {
                 navigate('/dashboard')
@@ -90,6 +94,9 @@ function Login() {
                             placeholder="you@tdtu.edu.vn"
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter') passwordRef.current?.focus()
+                            }}
                             style={{ width: '100%', padding: '8px 12px', border: '1px solid #ddd', borderRadius: '6px', fontSize: '14px', boxSizing: 'border-box' }}
                         />
                     </div>
@@ -97,10 +104,14 @@ function Login() {
                     <div style={{ marginBottom: '1.5rem' }}>
                         <label style={{ fontSize: '13px', color: '#666', display: 'block', marginBottom: '4px' }}>Password</label>
                         <input
+                            ref={passwordRef}
                             type="password"
                             placeholder="••••••••"
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter') handleLogin()
+                            }}
                             style={{ width: '100%', padding: '8px 12px', border: '1px solid #ddd', borderRadius: '6px', fontSize: '14px', boxSizing: 'border-box' }}
                         />
                     </div>
