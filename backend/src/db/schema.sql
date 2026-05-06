@@ -135,8 +135,13 @@ CREATE TABLE IF NOT EXISTS anomaly_flags (
   submission_id TEXT REFERENCES submissions(id) ON DELETE CASCADE,
   session_id TEXT NOT NULL REFERENCES writing_sessions(id) ON DELETE CASCADE,
   student_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  wpm_z NUMERIC(10, 4),
+  paste_z NUMERIC(10, 4),
+  revision_z NUMERIC(10, 4),
   composite_z NUMERIC(10, 4),
   confidence_pct NUMERIC(5, 2),
+  zscore_threshold_snapshot NUMERIC(6, 2),
+  paste_threshold_chars_snapshot INTEGER,
   paste_triggered BOOLEAN NOT NULL DEFAULT FALSE,
   status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'dismissed', 'escalated')),
   teacher_notes TEXT,
@@ -144,6 +149,13 @@ CREATE TABLE IF NOT EXISTS anomaly_flags (
   flagged_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   reviewed_at TIMESTAMPTZ
 );
+
+ALTER TABLE anomaly_flags
+  ADD COLUMN IF NOT EXISTS wpm_z NUMERIC(10, 4),
+  ADD COLUMN IF NOT EXISTS paste_z NUMERIC(10, 4),
+  ADD COLUMN IF NOT EXISTS revision_z NUMERIC(10, 4),
+  ADD COLUMN IF NOT EXISTS zscore_threshold_snapshot NUMERIC(6, 2),
+  ADD COLUMN IF NOT EXISTS paste_threshold_chars_snapshot INTEGER;
 
 CREATE TABLE IF NOT EXISTS study_sessions (
   id TEXT PRIMARY KEY,
@@ -171,4 +183,5 @@ CREATE INDEX IF NOT EXISTS idx_consents_user_id ON consents(user_id);
 CREATE INDEX IF NOT EXISTS idx_writing_sessions_student_id ON writing_sessions(student_id);
 CREATE INDEX IF NOT EXISTS idx_submissions_student_assignment ON submissions(student_id, assignment_id);
 CREATE INDEX IF NOT EXISTS idx_anomaly_flags_student_id ON anomaly_flags(student_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_anomaly_flags_session_id_unique ON anomaly_flags(session_id);
 CREATE INDEX IF NOT EXISTS idx_hint_interactions_session_id ON hint_interactions(study_session_id);

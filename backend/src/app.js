@@ -6,6 +6,7 @@ const authRoutes = require("./routes/auth.routes");
 const consentRoutes = require("./routes/consent.routes");
 const courseRoutes = require("./routes/course.routes");
 const demoRoutes = require("./routes/demo.routes");
+const flagRoutes = require("./routes/flag.routes");
 const telemetryRoutes = require("./routes/telemetry.routes");
 
 const app = express();
@@ -29,6 +30,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/consent", consentRoutes);
 app.use("/api/courses", courseRoutes);
 app.use("/api/demo", demoRoutes);
+app.use("/api/flags", flagRoutes);
 app.use("/api/telemetry", telemetryRoutes);
 app.use(express.static(frontendDir));
 

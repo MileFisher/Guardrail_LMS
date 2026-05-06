@@ -293,7 +293,7 @@ function AddStudentModal({ courseId, onClose, onAdd, loading }) {
 
                 <div style={{ marginBottom: '14px' }}>
                     <label style={labelStyle}>Student ID</label>
-                    <input value={studentId} onChange={(e) => setStudentId(e.target.value)} style={inputStyle} placeholder="paste student UUID/id" />
+                    <input value={studentId} onChange={(e) => setStudentId(e.target.value)} style={inputStyle} placeholder="Enter student ID" />
                 </div>
 
                 {error && <p style={{ margin: '0 0 12px', color: '#dc2626', fontSize: '12px' }}>{error}</p>}
@@ -570,21 +570,39 @@ function CoursePanel({ course, navigate, onCreateAssignment, onAddStudent }) {
                                         <p style={{ margin: 0, fontSize: '12px', color: '#888' }}>{student.email || student.id}</p>
                                     </div>
                                 </div>
-                                <button
-                                    onClick={() => navigate(`/teacher/student/${student.id}`)}
-                                    style={{
-                                        padding: '5px 14px',
-                                        borderRadius: '6px',
-                                        fontSize: '13px',
-                                        fontWeight: '500',
-                                        background: '#1a5fa8',
-                                        color: 'white',
-                                        border: 'none',
-                                        cursor: 'pointer',
-                                    }}
-                                >
-                                    View
-                                </button>
+                                <div style={{ display: 'flex', gap: '6px' }}>
+                                    <button
+                                        onClick={() => navigate(`/teacher/student/${student.id}/hints?courseId=${course.id}`)}
+                                        style={{
+                                            padding: '5px 12px',
+                                            borderRadius: '6px',
+                                            fontSize: '12px',
+                                            fontWeight: '500',
+                                            background: '#fffbeb',
+                                            color: '#d97706',
+                                            border: '1px solid #fde68a',
+                                            cursor: 'pointer',
+                                        }}
+                                        title="View hint interaction log"
+                                    >
+                                        💡 Hints
+                                    </button>
+                                    <button
+                                        onClick={() => navigate(`/teacher/student/${student.id}?courseId=${course.id}`)}
+                                        style={{
+                                            padding: '5px 14px',
+                                            borderRadius: '6px',
+                                            fontSize: '13px',
+                                            fontWeight: '500',
+                                            background: '#1a5fa8',
+                                            color: 'white',
+                                            border: 'none',
+                                            cursor: 'pointer',
+                                        }}
+                                    >
+                                        View
+                                    </button>
+                                </div>
                             </div>
                         ))
                     )}
@@ -643,9 +661,9 @@ function TeacherDashboard() {
                         id: e.student?.id || e.studentId,
                         displayName: e.student?.displayName || 'Student',
                         email: e.student?.email || '',
-                        sessions: 0,
-                        calibrated: false,
-                        pendingFlags: 0,
+                        sessions: e.sessionCount || 0,
+                        calibrated: Boolean(e.isCalibrated),
+                        pendingFlags: e.pendingFlags || 0,
                         hintsUsed: 0,
                     }))
 
