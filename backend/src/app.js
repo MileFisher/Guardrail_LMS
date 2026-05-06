@@ -2,12 +2,15 @@ const express = require("express");
 const path = require("path");
 const cors = require("cors");
 const helmet = require("helmet");
+const adminRoutes = require("./routes/admin.routes");
 const authRoutes = require("./routes/auth.routes");
 const consentRoutes = require("./routes/consent.routes");
 const courseRoutes = require("./routes/course.routes");
 const demoRoutes = require("./routes/demo.routes");
 const flagRoutes = require("./routes/flag.routes");
+const submissionRoutes = require("./routes/submission.routes");
 const telemetryRoutes = require("./routes/telemetry.routes");
+const tutorRoutes = require("./routes/tutor.routes");
 
 const app = express();
 const frontendDir = path.join(__dirname, "..", "..", "frontend");
@@ -26,12 +29,15 @@ app.get("/health", (req, res) => {
   res.status(200).json({ status: "ok" });
 });
 
+app.use("/api/admin", adminRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/consent", consentRoutes);
 app.use("/api/courses", courseRoutes);
 app.use("/api/demo", demoRoutes);
 app.use("/api/flags", flagRoutes);
+app.use("/api/submissions", submissionRoutes);
 app.use("/api/telemetry", telemetryRoutes);
+app.use("/api/tutor", tutorRoutes);
 app.use(express.static(frontendDir));
 
 app.use((req, res) => {

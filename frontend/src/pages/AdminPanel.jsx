@@ -45,20 +45,9 @@ const ROLE_CFG = {
     student: { label: 'Student', color: '#15803d', bg: '#f0fdf4', border: '#bbf7d0' },
 }
 
-const MOCK_USERS = [
-    { id: 'u-001', displayName: 'Aung Khant Paing',  email: 'aung@tdtu.edu.vn',            role: 'admin',   isActive: true,  createdAt: '2026-01-10T08:00:00Z' },
-    { id: 'u-002', displayName: 'Nan Hnin Yai Kyi',  email: 'nan@tdtu.edu.vn',             role: 'teacher', isActive: true,  createdAt: '2026-01-10T08:05:00Z' },
-    { id: 'u-003', displayName: 'Vo Thi Kim Anh',    email: 'anh@tdtu.edu.vn',             role: 'teacher', isActive: true,  createdAt: '2026-01-12T09:00:00Z' },
-    { id: 'u-004', displayName: 'Minh Tuan Le',      email: 'minh@student.tdtu.edu.vn',    role: 'student', isActive: true,  createdAt: '2026-02-01T07:30:00Z' },
-    { id: 'u-005', displayName: 'Phuong Linh Tran',  email: 'linh@student.tdtu.edu.vn',    role: 'student', isActive: true,  createdAt: '2026-02-01T07:31:00Z' },
-    { id: 'u-006', displayName: 'Duc Huy Nguyen',    email: 'huy@student.tdtu.edu.vn',     role: 'student', isActive: false, createdAt: '2026-02-01T07:32:00Z' },
-    { id: 'u-007', displayName: 'Thu Ha Pham',       email: 'ha@student.tdtu.edu.vn',      role: 'student', isActive: true,  createdAt: '2026-02-02T08:00:00Z' },
-]
-
-const MOCK_THRESHOLDS = {
+const DEFAULT_THRESHOLDS = {
     zscoreDefault: 3.0,
     pasteThresholdChars: 500,
-    minWordsForHint: 30,
     maxHintLevel: 3,
     loginRateLimitAttempts: 10,
     loginRateLimitWindowMin: 15,
@@ -306,7 +295,6 @@ function ThresholdsTab({ thresholds, onSave, mutating }) {
     const rows = [
         { label: 'Z-score flag threshold', description: 'Composite Z-score above this value triggers a flag for teacher review. FR-07 default: Z > 3.', field: 'zscoreDefault', unit: 'σ', min: 1, max: 6, step: 0.1, note: 'Lowering increases false-positive flags. Teachers can override per assignment within this bound.' },
         { label: 'Paste volume threshold', description: 'Cumulative pasted characters per session that independently trigger a flag, regardless of Z-score. FR-09.', field: 'pasteThresholdChars', unit: 'chars', min: 100, max: 2000, step: 50 },
-        { label: 'Effort gate — minimum words', description: 'Students must type at least this many words before requesting a Socratic AI hint. FR-21.', field: 'minWordsForHint', unit: 'words', min: 10, max: 200, step: 5 },
         { label: 'Max hint level', description: 'The highest hint level students can reach before being redirected to their teacher. FR-24.', field: 'maxHintLevel', unit: 'level', min: 1, max: 3, step: 1 },
         { label: 'Login rate limit — max attempts', description: 'Max failed login attempts per IP before the window locks the account. FR-17.', field: 'loginRateLimitAttempts', unit: 'attempts', min: 3, max: 30, step: 1 },
         { label: 'Login rate limit — window', description: 'Duration of the rate limit sliding window. FR-17.', field: 'loginRateLimitWindowMin', unit: 'minutes', min: 5, max: 60, step: 5 },
@@ -400,7 +388,7 @@ function SystemTab() {
                         <button key={a.label} style={{ ...btnS, color: a.color, borderColor: a.color + '44', fontSize: '12px' }}>{a.label}</button>
                     ))}
                 </div>
-                <p style={{ margin: '10px 0 0', fontSize: '11px', color: '#ccc' }}>Calls backend endpoints when API is ready. Currently UI-only.</p>
+                <p style={{ margin: '10px 0 0', fontSize: '11px', color: '#ccc' }}>System actions are shown only when backed by API data.</p>
             </div>
         </div>
     )
@@ -410,8 +398,9 @@ function AdminPanel() {
     const navigate = useNavigate()
     const [activeTab, setActiveTab] = useState(TABS.USERS)
     const [users, setUsers] = useState([])
-    const [thresholds, setThresholds] = useState(MOCK_THRESHOLDS)
+    const [thresholds, setThresholds] = useState(DEFAULT_THRESHOLDS)
     const [loading, setLoading] = useState(true)
+    const [loadError, setLoadError] = useState('')
     const [mutating, setMutating] = useState(false)
     const [toast, setToast] = useState({ msg: '', type: 'ok' })
 
@@ -427,24 +416,26 @@ function AdminPanel() {
     useEffect(() => {
         async function load() {
             try {
-                const [ur, tr] = await Promise.allSettled([apiGet('/api/admin/users'), apiGet('/api/admin/thresholds')])
-                if (ur.status === 'fulfilled') setUsers(ur.value.users || ur.value)
-                else setUsers(MOCK_USERS)
-                if (tr.status === 'fulfilled') setThresholds(tr.value)
-            } catch { setUsers(MOCK_USERS) }
+                setLoadError('')
+                const [usersRes, thresholdsRes] = await Promise.all([
+                    apiGet('/api/admin/users'),
+                    apiGet('/api/admin/thresholds'),
+                ])
+                setUsers(usersRes.users || [])
+                setThresholds({ ...DEFAULT_THRESHOLDS, ...thresholdsRes })
+            } catch (err) {
+                setLoadError(err.message || 'Failed to load admin data from the database.')
+            }
             finally { setLoading(false) }
         }
         load()
     }, [])
 
-    useEffect(() => { if (!loading && users.length === 0) setUsers(MOCK_USERS) }, [loading, users.length])
-
     const handleCreateUser = async (data) => {
         setMutating(true)
         try {
-            const res = await apiPost('/api/admin/users', data).catch(() => null)
-            const newUser = res?.user || { id: `u-${Date.now()}`, ...data, isActive: true, createdAt: new Date().toISOString() }
-            setUsers(p => [newUser, ...p])
+            const res = await apiPost('/api/admin/users', data)
+            setUsers(p => [res.user, ...p])
             showToast('Account created successfully.')
         } catch (e) { showToast(e.message, 'error') }
         finally { setMutating(false) }
@@ -453,8 +444,8 @@ function AdminPanel() {
     const handleEditUser = async (id, changes) => {
         setMutating(true)
         try {
-            await apiPatch(`/api/admin/users/${id}`, changes).catch(() => null)
-            setUsers(p => p.map(u => u.id === id ? { ...u, ...changes } : u))
+            const res = await apiPatch(`/api/admin/users/${id}`, changes)
+            setUsers(p => p.map(u => u.id === id ? res.user : u))
             showToast('User updated.')
         } catch (e) { showToast(e.message, 'error') }
         finally { setMutating(false) }
@@ -464,8 +455,8 @@ function AdminPanel() {
         if (!window.confirm('Deactivate this account?')) return
         setMutating(true)
         try {
-            await apiPatch(`/api/admin/users/${id}`, { isActive: false }).catch(() => null)
-            setUsers(p => p.map(u => u.id === id ? { ...u, isActive: false } : u))
+            const res = await apiPatch(`/api/admin/users/${id}`, { isActive: false })
+            setUsers(p => p.map(u => u.id === id ? res.user : u))
             showToast('Account deactivated.')
         } catch (e) { showToast(e.message, 'error') }
         finally { setMutating(false) }
@@ -474,8 +465,8 @@ function AdminPanel() {
     const handleSaveThresholds = async (data) => {
         setMutating(true)
         try {
-            await apiPatch('/api/admin/thresholds', data).catch(() => null)
-            setThresholds(data)
+            const saved = await apiPatch('/api/admin/thresholds', data)
+            setThresholds({ ...DEFAULT_THRESHOLDS, ...saved })
             showToast('Global thresholds saved.')
         } catch (e) { showToast(e.message, 'error') }
         finally { setMutating(false) }
@@ -534,6 +525,11 @@ function AdminPanel() {
             </div>
 
             <div style={{ maxWidth: '1050px', margin: '0 auto', padding: '1.75rem 2rem' }}>
+                {loadError && (
+                    <div style={{ marginBottom: '1rem', padding: '12px 16px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', color: '#b91c1c', fontSize: '13px' }}>
+                        {loadError}
+                    </div>
+                )}
                 {activeTab === TABS.USERS      && <UsersTab users={users} onEdit={handleEditUser} onCreate={handleCreateUser} onDeactivate={handleDeactivate} mutating={mutating} />}
                 {activeTab === TABS.THRESHOLDS && <ThresholdsTab thresholds={thresholds} onSave={handleSaveThresholds} mutating={mutating} />}
                 {activeTab === TABS.SYSTEM     && <SystemTab />}

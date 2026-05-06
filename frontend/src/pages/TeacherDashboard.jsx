@@ -3,6 +3,11 @@ import { useNavigate } from 'react-router-dom'
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || ''
 const TAB = { OVERVIEW: 'overview', ASSIGNMENTS: 'assignments', STUDENTS: 'students' }
+const ASSIGNMENT_TYPE = { ESSAY: 'essay', QA: 'qa' }
+
+function getAssignmentTypeLabel(type) {
+    return type === ASSIGNMENT_TYPE.QA ? 'Socratic Q&A tutor' : 'Integrity Monitor essay'
+}
 
 // ---------------- API helpers ----------------
 async function apiGet(path) {
@@ -148,9 +153,11 @@ function CreateAssignmentModal({ courseId, onClose, onCreate, loading }) {
     const [title, setTitle] = useState('')
     const [due, setDue] = useState('')
     const [prompt, setPrompt] = useState('')
+    const [assignmentType, setAssignmentType] = useState(ASSIGNMENT_TYPE.ESSAY)
     const [zscoreThreshold, setZscoreThreshold] = useState('2.0')
     const [pasteThreshold, setPasteThreshold] = useState('200')
     const [error, setError] = useState('')
+    const isEssayAssignment = assignmentType === ASSIGNMENT_TYPE.ESSAY
 
     const handleSubmit = async () => {
         if (!title.trim()) {
@@ -161,11 +168,12 @@ function CreateAssignmentModal({ courseId, onClose, onCreate, loading }) {
 
         await onCreate({
             courseId,
+            assignmentType,
             title: title.trim(),
             due,
             prompt: prompt.trim() || 'No prompt provided',
-            zscoreThreshold: Number(zscoreThreshold || 2.0),
-            pasteThreshold: Number(pasteThreshold || 200),
+            zscoreThreshold: isEssayAssignment ? Number(zscoreThreshold || 2.0) : null,
+            pasteThreshold: isEssayAssignment ? Number(pasteThreshold || 200) : null,
         })
 
         onClose()
@@ -180,7 +188,50 @@ function CreateAssignmentModal({ courseId, onClose, onCreate, loading }) {
 
                 <div style={{ marginBottom: '14px' }}>
                     <label style={labelStyle}>Title</label>
-                    <input value={title} onChange={(e) => setTitle(e.target.value)} style={inputStyle} placeholder="e.g. Essay: AI in Education" />
+                    <input
+                        value={title}
+                        onChange={(e) => setTitle(e.target.value)}
+                        style={inputStyle}
+                        placeholder={isEssayAssignment ? 'e.g. Essay: Infection Control Reflection' : 'e.g. Q&A: Tooth Eruption Stages'}
+                    />
+                </div>
+
+                <div style={{ marginBottom: '14px' }}>
+                    <label style={labelStyle}>Assignment type</label>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                        {[
+                            {
+                                value: ASSIGNMENT_TYPE.ESSAY,
+                                title: 'Essay + Integrity Monitor',
+                                description: 'Students write and submit an essay. Telemetry, paste detection, and anomaly thresholds apply.',
+                            },
+                            {
+                                value: ASSIGNMENT_TYPE.QA,
+                                title: 'Q&A + Socratic Tutor',
+                                description: 'Students open the guided tutor workspace. No essay submission or integrity thresholds are used.',
+                            },
+                        ].map((option) => {
+                            const selected = assignmentType === option.value
+                            return (
+                                <button
+                                    key={option.value}
+                                    type="button"
+                                    onClick={() => setAssignmentType(option.value)}
+                                    style={{
+                                        textAlign: 'left',
+                                        padding: '12px',
+                                        borderRadius: '10px',
+                                        border: selected ? '2px solid #1a5fa8' : '1px solid #d7dfeb',
+                                        background: selected ? '#eff6ff' : 'white',
+                                        cursor: 'pointer',
+                                    }}
+                                >
+                                    <p style={{ margin: '0 0 6px', fontSize: '13px', fontWeight: '600', color: '#1a1a2e' }}>{option.title}</p>
+                                    <p style={{ margin: 0, fontSize: '12px', lineHeight: 1.5, color: '#666' }}>{option.description}</p>
+                                </button>
+                            )
+                        })}
+                    </div>
                 </div>
 
                 <div style={{ marginBottom: '14px' }}>
@@ -199,34 +250,43 @@ function CreateAssignmentModal({ courseId, onClose, onCreate, loading }) {
                     />
                 </div>
 
-                <div style={{ background: '#f8f9fc', borderRadius: '8px', padding: '12px', marginBottom: '14px' }}>
-                    <p style={{ margin: '0 0 10px', fontSize: '12px', fontWeight: '600', color: '#666' }}>Detection thresholds</p>
-                    <div style={{ display: 'flex', gap: '12px' }}>
-                        <div style={{ flex: 1 }}>
-                            <label style={labelStyle}>Z-score threshold</label>
-                            <input
-                                type="number"
-                                step="0.1"
-                                min="1"
-                                max="5"
-                                value={zscoreThreshold}
-                                onChange={(e) => setZscoreThreshold(e.target.value)}
-                                style={inputStyle}
-                            />
-                        </div>
-                        <div style={{ flex: 1 }}>
-                            <label style={labelStyle}>Paste threshold (chars)</label>
-                            <input
-                                type="number"
-                                min="0"
-                                step="10"
-                                value={pasteThreshold}
-                                onChange={(e) => setPasteThreshold(e.target.value)}
-                                style={inputStyle}
-                            />
+                {isEssayAssignment ? (
+                    <div style={{ background: '#f8f9fc', borderRadius: '8px', padding: '12px', marginBottom: '14px' }}>
+                        <p style={{ margin: '0 0 10px', fontSize: '12px', fontWeight: '600', color: '#666' }}>Detection thresholds</p>
+                        <div style={{ display: 'flex', gap: '12px' }}>
+                            <div style={{ flex: 1 }}>
+                                <label style={labelStyle}>Z-score threshold</label>
+                                <input
+                                    type="number"
+                                    step="0.1"
+                                    min="1"
+                                    max="5"
+                                    value={zscoreThreshold}
+                                    onChange={(e) => setZscoreThreshold(e.target.value)}
+                                    style={inputStyle}
+                                />
+                            </div>
+                            <div style={{ flex: 1 }}>
+                                <label style={labelStyle}>Paste threshold (chars)</label>
+                                <input
+                                    type="number"
+                                    min="0"
+                                    step="10"
+                                    value={pasteThreshold}
+                                    onChange={(e) => setPasteThreshold(e.target.value)}
+                                    style={inputStyle}
+                                />
+                            </div>
                         </div>
                     </div>
-                </div>
+                ) : (
+                    <div style={{ background: '#fffbeb', borderRadius: '8px', padding: '12px', marginBottom: '14px', border: '1px solid #fde68a' }}>
+                        <p style={{ margin: '0 0 6px', fontSize: '12px', fontWeight: '600', color: '#92400e' }}>Socratic tutor assignment</p>
+                        <p style={{ margin: 0, fontSize: '12px', lineHeight: 1.5, color: '#7c5a15' }}>
+                            Students will use guided hints only. Essay submission metrics and integrity thresholds stay off for this assignment type.
+                        </p>
+                    </div>
+                )}
 
                 {error && <p style={{ margin: '0 0 12px', color: '#dc2626', fontSize: '12px' }}>{error}</p>}
 
@@ -475,7 +535,11 @@ function CoursePanel({ course, navigate, onCreateAssignment, onAddStudent }) {
                             No assignments yet. Click + Assignment.
                         </p>
                     ) : (
-                        course.assignments.map((a, i) => (
+                        course.assignments.map((a, i) => {
+                            const isEssayAssignment = a.assignmentType !== ASSIGNMENT_TYPE.QA
+                            const progressPercent = Math.round((a.total ? a.submissions / a.total : 0) * 100)
+
+                            return (
                             <div
                                 key={a.id}
                                 style={{
@@ -486,14 +550,23 @@ function CoursePanel({ course, navigate, onCreateAssignment, onAddStudent }) {
                                 <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
                                     <div>
                                         <p style={{ margin: '0 0 2px', fontSize: '14px', fontWeight: '500', color: '#1a1a2e' }}>{a.title}</p>
-                                        <p style={{ margin: '0 0 8px', fontSize: '12px', color: '#888' }}>
+                                        <p style={{ display: isEssayAssignment ? 'block' : 'none', margin: '0 0 8px', fontSize: '12px', color: '#888' }}>
                                             Due{' '}
                                             {a.due
                                                 ? new Date(a.due).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
                                                 : 'N/A'}{' '}
                                             · {a.submissions}/{a.total} submitted
                                         </p>
-                                        <div style={{ display: 'flex', gap: '6px' }}>
+                                        {!isEssayAssignment ? (
+                                            <p style={{ margin: '0 0 8px', fontSize: '12px', color: '#888' }}>
+                                                Due{' '}
+                                                {a.due
+                                                    ? new Date(a.due).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+                                                    : 'N/A'}{' '}
+                                                | {getAssignmentTypeLabel(a.assignmentType)}
+                                            </p>
+                                        ) : null}
+                                        <div style={{ display: isEssayAssignment ? 'flex' : 'none', gap: '6px' }}>
                                             <span
                                                 style={{
                                                     padding: '2px 8px',
@@ -521,11 +594,44 @@ function CoursePanel({ course, navigate, onCreateAssignment, onAddStudent }) {
                                                 Paste ≥ {a.pasteThreshold} chars
                                             </span>
                                         </div>
+                                        {!isEssayAssignment ? (
+                                            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                                                <span
+                                                    style={{
+                                                        padding: '2px 8px',
+                                                        borderRadius: '20px',
+                                                        fontSize: '11px',
+                                                        fontWeight: '500',
+                                                        background: '#fffbeb',
+                                                        color: '#b45309',
+                                                        border: '1px solid #fde68a',
+                                                    }}
+                                                >
+                                                    {getAssignmentTypeLabel(a.assignmentType)}
+                                                </span>
+                                                <span
+                                                    style={{
+                                                        padding: '2px 8px',
+                                                        borderRadius: '20px',
+                                                        fontSize: '11px',
+                                                        fontWeight: '500',
+                                                        background: '#f5f3ff',
+                                                        color: '#6d28d9',
+                                                        border: '1px solid #ddd6fe',
+                                                    }}
+                                                >
+                                                    Hint ladder L1-L{a.maxHintLevel || 3}
+                                                </span>
+                                            </div>
+                                        ) : null}
                                     </div>
-                                    <div style={{ fontSize: '12px', color: '#888' }}>{Math.round((a.total ? a.submissions / a.total : 0) * 100)}%</div>
+                                    <div style={{ fontSize: '12px', color: '#888', whiteSpace: 'nowrap' }}>
+                                        {isEssayAssignment ? `${progressPercent}%` : 'Tutor'}
+                                    </div>
                                 </div>
                             </div>
-                        ))
+                            )
+                        })
                     )}
                 </div>
             )}
@@ -649,12 +755,14 @@ function TeacherDashboard() {
                     const enrollments = enrollRes.enrollments || []
                     const assignments = (assignRes.assignments || []).map((a) => ({
                         id: a.id,
+                        assignmentType: a.assignmentType || ASSIGNMENT_TYPE.ESSAY,
                         title: a.title,
                         due: a.dueAt || null,
+                        maxHintLevel: a.maxHintLevel ?? 3,
                         zscoreThreshold: a.zscoreThreshold ?? 2.0,
                         pasteThreshold: a.pasteThresholdChars ?? 200,
-                        submissions: 0,
-                        total: enrollments.length,
+                        submissions: Number(a.submissionCount ?? 0),
+                        total: Number(a.totalStudents ?? enrollments.length ?? 0),
                     }))
 
                     const students = enrollments.map((e) => ({
@@ -700,18 +808,18 @@ function TeacherDashboard() {
         }
     }
 
-    const handleCreateAssignment = async ({ courseId, title, due, prompt, zscoreThreshold, pasteThreshold }) => {
+    const handleCreateAssignment = async ({ courseId, assignmentType, title, due, prompt, zscoreThreshold, pasteThreshold }) => {
         setMutating(true)
         setError('')
         try {
             await apiPost(`/api/courses/${courseId}/assignments`, {
+                assignmentType,
                 title,
                 prompt: prompt || 'No prompt provided',
                 dueAt: due ? new Date(due).toISOString() : null,
                 zscoreThreshold,
                 pasteThresholdChars: pasteThreshold,
                 maxHintLevel: 3,
-                minWordsForHint: 30,
             })
             await loadCourses()
         } catch (e) {

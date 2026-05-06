@@ -35,6 +35,8 @@ Copy `.env.example` to `.env` and set:
 - `JWT_EXPIRES_IN`
 - `BCRYPT_ROUNDS`
 - `DATABASE_URL`
+- `OPENAI_API_KEY` for OpenAI-backed Socratic tutor requests
+- or `OPENROUTER_API_KEY` plus `OPENROUTER_MODEL` for OpenRouter-backed tutor requests
 
 ## Routes
 

@@ -17,6 +17,12 @@ CREATE TABLE IF NOT EXISTS consent_policies (
   published_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS system_settings (
+  key TEXT PRIMARY KEY,
+  value JSONB NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE TABLE IF NOT EXISTS consents (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
@@ -46,6 +52,7 @@ CREATE TABLE IF NOT EXISTS assignments (
   id TEXT PRIMARY KEY,
   course_id TEXT NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
   created_by TEXT NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+  assignment_type TEXT NOT NULL DEFAULT 'essay' CHECK (assignment_type IN ('essay', 'qa')),
   title TEXT NOT NULL,
   prompt TEXT NOT NULL,
   max_hint_level INTEGER NOT NULL DEFAULT 3 CHECK (max_hint_level BETWEEN 1 AND 3),
@@ -55,6 +62,32 @@ CREATE TABLE IF NOT EXISTS assignments (
   due_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE assignments
+  ADD COLUMN IF NOT EXISTS assignment_type TEXT;
+
+UPDATE assignments
+SET assignment_type = 'essay'
+WHERE assignment_type IS NULL;
+
+ALTER TABLE assignments
+  ALTER COLUMN assignment_type SET DEFAULT 'essay';
+
+ALTER TABLE assignments
+  ALTER COLUMN assignment_type SET NOT NULL;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'assignments_assignment_type_check'
+  ) THEN
+    ALTER TABLE assignments
+      ADD CONSTRAINT assignments_assignment_type_check
+      CHECK (assignment_type IN ('essay', 'qa'));
+  END IF;
+END $$;
 
 CREATE TABLE IF NOT EXISTS writing_sessions (
   id TEXT PRIMARY KEY,
@@ -126,9 +159,13 @@ CREATE TABLE IF NOT EXISTS submissions (
   student_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   session_id TEXT NOT NULL UNIQUE REFERENCES writing_sessions(id) ON DELETE CASCADE,
   file_url TEXT NOT NULL,
+  content_text TEXT,
   status TEXT NOT NULL DEFAULT 'submitted',
   submitted_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE submissions
+  ADD COLUMN IF NOT EXISTS content_text TEXT;
 
 CREATE TABLE IF NOT EXISTS anomaly_flags (
   id TEXT PRIMARY KEY,

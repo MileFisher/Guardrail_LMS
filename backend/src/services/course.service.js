@@ -28,6 +28,18 @@ function validateAssignmentInput({ title, prompt }) {
   }
 }
 
+function normalizeAssignmentType(assignmentType) {
+  const normalized = String(assignmentType || "essay").trim().toLowerCase();
+
+  if (!["essay", "qa"].includes(normalized)) {
+    const error = new Error("assignmentType must be essay or qa.");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  return normalized;
+}
+
 async function ensureTeacherUser(userId) {
   const user = await findUserById(userId);
 
@@ -138,7 +150,7 @@ async function listCourseEnrollments({ courseId, actor }) {
   return listEnrollmentsByCourse(courseId);
 }
 
-async function createCourseAssignment({ courseId, actor, title, prompt, maxHintLevel, minWordsForHint, zscoreThreshold, pasteThresholdChars, dueAt }) {
+async function createCourseAssignment({ courseId, actor, assignmentType, title, prompt, maxHintLevel, minWordsForHint, zscoreThreshold, pasteThresholdChars, dueAt }) {
   const course = await ensureCourseAccess(courseId, actor);
 
   if (actor.role === "student") {
@@ -154,23 +166,27 @@ async function createCourseAssignment({ courseId, actor, title, prompt, maxHintL
   }
 
   validateAssignmentInput({ title, prompt });
+  const normalizedAssignmentType = normalizeAssignmentType(assignmentType);
 
   return createAssignment({
     courseId,
     createdBy: actor.id,
+    assignmentType: normalizedAssignmentType,
     title: title.trim(),
     prompt: prompt.trim(),
-    maxHintLevel,
-    minWordsForHint,
-    zscoreThreshold,
-    pasteThresholdChars,
+    maxHintLevel: normalizedAssignmentType === "qa" ? maxHintLevel : 3,
+    minWordsForHint: normalizedAssignmentType === "qa" ? minWordsForHint : 0,
+    zscoreThreshold: normalizedAssignmentType === "essay" ? zscoreThreshold : null,
+    pasteThresholdChars: normalizedAssignmentType === "essay" ? pasteThresholdChars : null,
     dueAt
   });
 }
 
 async function listCourseAssignments({ courseId, actor }) {
   await ensureCourseAccess(courseId, actor);
-  return listAssignmentsByCourse(courseId);
+  return listAssignmentsByCourse(courseId, {
+    studentId: actor.role === "student" ? actor.id : null
+  });
 }
 
 async function ensureAssignmentAccess(assignmentId, actor) {

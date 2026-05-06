@@ -79,6 +79,7 @@ async function createAssignment(req, res, next) {
     const assignment = await createCourseAssignment({
       courseId: req.params.courseId,
       actor: req.user,
+      assignmentType: req.body.assignmentType,
       title: req.body.title,
       prompt: req.body.prompt,
       maxHintLevel: req.body.maxHintLevel,

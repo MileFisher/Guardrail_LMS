@@ -53,12 +53,6 @@ const HINT_LEVELS = {
     },
 }
 
-const MIN_WORDS = 30 // client-side preview; server enforces
-
-function countWords(text) {
-    return text.trim().split(/\s+/).filter(Boolean).length
-}
-
 // ── Sub-components ────────────────────────────────────────────────────────────
 
 function HintLevelBar({ current, max }) {
@@ -102,34 +96,6 @@ function HintLevelBar({ current, max }) {
                     </div>
                 )
             })}
-        </div>
-    )
-}
-
-function EffortGateBar({ wordCount, minWords }) {
-    const pct = Math.min(100, Math.round((wordCount / minWords) * 100))
-    const ready = wordCount >= minWords
-    return (
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 14px', background: ready ? '#f0fdf4' : '#fffbeb', borderRadius: '8px', border: `1px solid ${ready ? '#bbf7d0' : '#fde68a'}` }}>
-            <div style={{ flex: 1 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                    <span style={{ fontSize: '11px', fontWeight: '600', color: ready ? '#15803d' : '#92400e' }}>
-                        {ready ? '✓ Effort gate passed' : `Effort gate — type at least ${minWords} words first`}
-                    </span>
-                    <span style={{ fontSize: '11px', color: '#aaa' }}>{wordCount}/{minWords}</span>
-                </div>
-                <div style={{ height: '4px', background: '#e5e7eb', borderRadius: '4px', overflow: 'hidden' }}>
-                    <div
-                        style={{
-                            height: '100%',
-                            width: `${pct}%`,
-                            background: ready ? '#22c55e' : '#fbbf24',
-                            borderRadius: '4px',
-                            transition: 'width .3s',
-                        }}
-                    />
-                </div>
-            </div>
         </div>
     )
 }
@@ -313,8 +279,6 @@ function StudySession() {
     const [messages, setMessages] = useState([])
     const [input, setInput] = useState('')
     const [hintLevel, setHintLevel] = useState(1)
-    const [wordsSinceLastHint, setWordsSinceLastHint] = useState(0)
-    const [minWordsForHint, setMinWordsForHint] = useState(MIN_WORDS)
     const [maxHintReached, setMaxHintReached] = useState(false)
     const [loading, setLoading] = useState(false)
     const [pageLoading, setPageLoading] = useState(true)
@@ -329,13 +293,12 @@ function StudySession() {
 
         async function load() {
             try {
-                if (assignmentId) {
+                if (assignmentId && courseId) {
                     const data = await apiGet(`/api/courses/${courseId}/assignments`).catch(() => null)
                     if (data) {
                         const found = data.assignments?.find((a) => String(a.id) === String(assignmentId))
                         if (found) {
                             setAssignment(found)
-                            setMinWordsForHint(found.minWordsForHint || MIN_WORDS)
                         }
                     }
                 }
@@ -354,9 +317,6 @@ function StudySession() {
     }, [messages])
 
     // ── Word tracking ─────────────────────────────────────────────────────────
-    const currentWords = countWords(input)
-    const effortSatisfied = currentWords >= minWordsForHint
-
     function handleInputChange(e) {
         setInput(e.target.value)
     }
@@ -366,24 +326,10 @@ function StudySession() {
         const trimmed = input.trim()
         if (!trimmed || loading || maxHintReached) return
 
-        if (!effortSatisfied) {
-            setMessages((prev) => [
-                ...prev,
-                {
-                    id: Date.now(),
-                    role: 'system',
-                    variant: 'warn',
-                    content: `Please type at least ${minWordsForHint} words before requesting a hint (${currentWords}/${minWordsForHint}).`,
-                },
-            ])
-            return
-        }
-
         const userMsg = { id: Date.now(), role: 'user', content: trimmed }
         const loadingMsg = { id: Date.now() + 1, role: 'assistant', content: '', loading: true }
         setMessages((prev) => [...prev, userMsg, loadingMsg])
         setInput('')
-        setWordsSinceLastHint(0)
         setLoading(true)
         setError('')
 
@@ -392,8 +338,6 @@ function StudySession() {
                 assignmentId,
                 courseId,
                 message: trimmed,
-                hintLevel,
-                wordsTyped: currentWords,
             })
 
             if (result.jailbreakDetected) {
@@ -403,7 +347,7 @@ function StudySession() {
                         m.id === loadingMsg.id
                             ? {
                                   ...m,
-                                  content: "That request couldn't be processed. Please ask a genuine study question.",
+                                  content: result.response || result.message,
                                   loading: false,
                                   variant: 'error',
                                   role: 'system',
@@ -429,8 +373,7 @@ function StudySession() {
                 const newLevel = result.hintLevel || hintLevel
                 setHintLevel(newLevel)
 
-                // Fix: log max hint reached to backend when first hitting the limit
-                if (newLevel >= 3 && !maxHintReached) {
+                if (result.maxHintReached && !maxHintReached) {
                     setMaxHintReached(true)
                     apiPost('/api/tutor/hint-limit-reached', {
                         assignmentId,
@@ -643,7 +586,6 @@ function StudySession() {
                         </p>
                         {[
                             'Type your question or show your thinking',
-                            `You need ${minWordsForHint}+ words to unlock a hint`,
                             'Hints guide you — they won\'t give direct answers',
                             'Hint level advances as you engage more',
                             'After L3, consult your teacher',
@@ -727,9 +669,6 @@ function StudySession() {
                         <div ref={messagesEndRef} />
                     </div>
 
-                    {/* Effort gate bar */}
-                    <EffortGateBar wordCount={currentWords} minWords={minWordsForHint} />
-
                     {/* Input area */}
                     <div
                         style={{
@@ -751,7 +690,7 @@ function StudySession() {
                                 placeholder={
                                     maxHintReached
                                         ? 'Maximum hint level reached. Consult your teacher or course materials.'
-                                        : `Describe what you're working on or where you're stuck… (${currentWords}/${minWordsForHint} words)`
+                                        : 'Describe what you\'re working on or where you\'re stuck…'
                                 }
                                 disabled={maxHintReached || loading}
                                 rows={3}
@@ -768,7 +707,6 @@ function StudySession() {
                                     boxSizing: 'border-box',
                                     background: maxHintReached ? '#f9f9f9' : 'white',
                                     transition: 'border-color .2s',
-                                    borderColor: effortSatisfied && !maxHintReached ? '#22c55e' : '#e5e7eb',
                                 }}
                             />
                             <p style={{ margin: '4px 0 0 2px', fontSize: '11px', color: '#bbb' }}>

@@ -117,11 +117,13 @@ function CalibrationBadge({ baseline }) {
 }
 
 function AssignmentRow({ assignment, onOpen }) {
-    const isSubmitted = assignment.status === 'submitted'
+    const isEssayAssignment = assignment.assignmentType !== 'qa'
+    const isSubmitted = isEssayAssignment && assignment.status === 'submitted'
     const isPast = assignment.due ? new Date(assignment.due) < new Date() : false
     const dueLabel = assignment.due
         ? `Due ${new Date(assignment.due).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`
         : 'No due date'
+    const assignmentTypeLabel = isEssayAssignment ? 'Essay assignment' : 'Q&A tutor assignment'
 
     return (
         <div
@@ -145,44 +147,26 @@ function AssignmentRow({ assignment, onOpen }) {
                 />
                 <div>
                     <p style={{ margin: 0, fontSize: '14px', fontWeight: '500', color: '#1a1a2e' }}>{assignment.title}</p>
+                    <p style={{ margin: 0, fontSize: '12px', color: '#888' }}>{assignmentTypeLabel}</p>
                     <p style={{ margin: 0, fontSize: '12px', color: isPast && !isSubmitted ? '#dc2626' : '#888' }}>{dueLabel}</p>
                 </div>
             </div>
 
             <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                {!isSubmitted && (
-                    <a
-                        href={`/study?assignmentId=${assignment.id}&courseId=${assignment.courseId || ''}`}
-                        style={{
-                            padding: '5px 12px',
-                            borderRadius: '6px',
-                            fontSize: '12px',
-                            fontWeight: '500',
-                            border: '1px solid #d97706',
-                            background: '#fffbeb',
-                            color: '#d97706',
-                            textDecoration: 'none',
-                            cursor: 'pointer',
-                        }}
-                        title="Open Socratic AI Tutor study session"
-                    >
-                        💡 Study
-                    </a>
-                )}
                 <button
-                    onClick={() => !isSubmitted && onOpen(assignment)}
+                    onClick={() => (!isSubmitted || !isEssayAssignment) && onOpen(assignment)}
                     style={{
                         padding: '5px 16px',
                         borderRadius: '6px',
                         fontSize: '13px',
                         fontWeight: '500',
-                        cursor: isSubmitted ? 'default' : 'pointer',
+                        cursor: isSubmitted && isEssayAssignment ? 'default' : 'pointer',
                         border: 'none',
-                        background: isSubmitted ? '#f0fdf4' : '#1a5fa8',
+                        background: isSubmitted ? '#f0fdf4' : isEssayAssignment ? '#1a5fa8' : '#d97706',
                         color: isSubmitted ? '#15803d' : 'white',
                     }}
                 >
-                    {isSubmitted ? 'Submitted' : 'Open'}
+                    {isSubmitted ? 'Submitted' : isEssayAssignment ? 'Open Essay' : 'Open Tutor'}
                 </button>
             </div>
         </div>
@@ -191,7 +175,11 @@ function AssignmentRow({ assignment, onOpen }) {
 
 function CourseCard({ course, onOpenAssignment }) {
     const [expanded, setExpanded] = useState(true)
-    const submitted = course.assignments.filter((a) => a.status === 'submitted').length
+    const essayAssignments = course.assignments.filter((a) => a.assignmentType !== 'qa')
+    const submitted = essayAssignments.filter((a) => a.status === 'submitted').length
+    const subtitle = essayAssignments.length
+        ? `${submitted}/${essayAssignments.length} essays submitted`
+        : 'Q&A tutor assignments only'
 
     return (
         <div
@@ -235,7 +223,7 @@ function CourseCard({ course, onOpenAssignment }) {
                     <div>
                         <p style={{ margin: 0, fontWeight: '600', fontSize: '14px', color: '#1a1a2e' }}>{course.title}</p>
                         <p style={{ margin: 0, fontSize: '12px', color: '#888' }}>
-                            {course.teacher || 'Teacher'} · {submitted}/{course.assignments.length} submitted
+                            {course.teacher || 'Teacher'} · {subtitle}
                         </p>
                         {course.baselines?.length > 0 && (
                             <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '8px' }}>
@@ -404,9 +392,11 @@ function Dashboard() {
                             const assignmentRes = await apiGet(`/api/courses/${course.id}/assignments`)
                             const assignments = (assignmentRes.assignments || []).map((assignment) => ({
                                 id: assignment.id,
+                                courseId: course.id,
+                                assignmentType: assignment.assignmentType || 'essay',
                                 title: assignment.title,
                                 due: assignment.dueAt || assignment.due || null,
-                                status: assignment.submittedAt ? 'submitted' : 'open',
+                                status: (assignment.assignmentType || 'essay') === 'essay' && assignment.submittedAt ? 'submitted' : 'open',
                             }))
                             return { courseId: course.id, assignments }
                         } catch {
@@ -477,6 +467,11 @@ function Dashboard() {
 
     const handleOpenAssignment = (assignment) => {
         setSelectedAssignment(assignment)
+        if (assignment.assignmentType === 'qa') {
+            navigate(`/study?assignmentId=${assignment.id}&courseId=${assignment.courseId || ''}`)
+            return
+        }
+
         if (!localStorage.getItem('consentAccepted')) {
             pendingAssignmentId.current = assignment.id
             setShowConsent(true)

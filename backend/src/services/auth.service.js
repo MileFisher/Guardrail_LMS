@@ -40,6 +40,12 @@ async function loginUser({ email, password }) {
     throw error;
   }
 
+  if (user.status !== "active") {
+    const error = new Error("This account is not active.");
+    error.statusCode = 403;
+    throw error;
+  }
+
   const passwordMatches = await bcrypt.compare(password, user.passwordHash);
 
   if (!passwordMatches) {

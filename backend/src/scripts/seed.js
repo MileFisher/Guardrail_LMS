@@ -15,19 +15,19 @@ const seedUsers = [
     email: "teacher@guardrail.local",
     password: "password123",
     role: "teacher",
-    displayName: "Course Teacher"
+    displayName: "Dr. Sahan Perera"
   },
   {
     email: "student1@guardrail.local",
     password: "password123",
     role: "student",
-    displayName: "Student One"
+    displayName: "Anika De Silva"
   },
   {
     email: "student2@guardrail.local",
     password: "password123",
     role: "student",
-    displayName: "Student Two"
+    displayName: "Milan Fernando"
   }
 ];
 
@@ -50,16 +50,20 @@ async function upsertUser(user) {
   return result.rows[0];
 }
 
-async function upsertCourse({ teacherId, title, code }) {
-  const existing = await query("SELECT id FROM courses WHERE code = $1 LIMIT 1", [code]);
+async function upsertCourse({ teacherId, title, code, legacyCodes = [] }) {
+  let existing = await query("SELECT id FROM courses WHERE code = $1 LIMIT 1", [code]);
+
+  if (!existing.rows[0] && legacyCodes.length > 0) {
+    existing = await query("SELECT id FROM courses WHERE code = ANY($1::text[]) LIMIT 1", [legacyCodes]);
+  }
 
   if (existing.rows[0]) {
     const result = await query(
       `UPDATE courses
-       SET teacher_id = $2, title = $3, is_active = TRUE
-       WHERE code = $1
+       SET teacher_id = $2, title = $3, code = $4, is_active = TRUE
+       WHERE id = $1
        RETURNING id, code, title`,
-      [code, teacherId, title]
+      [existing.rows[0].id, teacherId, title, code]
     );
 
     return result.rows[0];
@@ -75,6 +79,10 @@ async function upsertCourse({ teacherId, title, code }) {
   return result.rows[0];
 }
 
+function daysFromNow(days) {
+  return new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
+}
+
 async function ensureEnrollment(courseId, studentId) {
   await query(
     `INSERT INTO enrollments (id, course_id, student_id, enrolled_at)
@@ -84,19 +92,57 @@ async function ensureEnrollment(courseId, studentId) {
   );
 }
 
-async function ensureAssignment({ courseId, createdBy, title, prompt }) {
-  const existing = await query(
+async function ensureAssignment({
+  courseId,
+  createdBy,
+  assignmentType = "essay",
+  title,
+  prompt,
+  maxHintLevel = 3,
+  minWordsForHint = 0,
+  zscoreThreshold = null,
+  pasteThresholdChars = null,
+  dueAt = null,
+  legacyTitles = []
+}) {
+  let existing = await query(
     `SELECT id FROM assignments WHERE course_id = $1 AND title = $2 LIMIT 1`,
     [courseId, title]
   );
 
+  if (!existing.rows[0] && legacyTitles.length > 0) {
+    existing = await query(
+      `SELECT id FROM assignments WHERE course_id = $1 AND title = ANY($2::text[]) LIMIT 1`,
+      [courseId, legacyTitles]
+    );
+  }
+
   if (existing.rows[0]) {
     const result = await query(
       `UPDATE assignments
-       SET prompt = $2, created_by = $3
+       SET title = $2,
+           prompt = $3,
+           created_by = $4,
+           assignment_type = $5,
+           max_hint_level = $6,
+           min_words_for_hint = $7,
+           zscore_threshold = $8,
+           paste_threshold_chars = $9,
+           due_at = $10
        WHERE id = $1
-       RETURNING id, title`,
-      [existing.rows[0].id, prompt, createdBy]
+       RETURNING id, title, assignment_type`,
+      [
+        existing.rows[0].id,
+        title,
+        prompt,
+        createdBy,
+        assignmentType,
+        maxHintLevel,
+        minWordsForHint,
+        zscoreThreshold,
+        pasteThresholdChars,
+        dueAt
+      ]
     );
 
     return result.rows[0];
@@ -104,12 +150,25 @@ async function ensureAssignment({ courseId, createdBy, title, prompt }) {
 
   const result = await query(
     `INSERT INTO assignments (
-       id, course_id, created_by, title, prompt, max_hint_level, min_words_for_hint,
+       id, course_id, created_by, assignment_type, title, prompt, max_hint_level, min_words_for_hint,
        zscore_threshold, paste_threshold_chars, due_at, created_at
      )
-     VALUES ($1, $2, $3, $4, $5, 3, 50, 3.00, 400, NULL, $6)
-     RETURNING id, title`,
-    [uuidv4(), courseId, createdBy, title, prompt, new Date().toISOString()]
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+     RETURNING id, title, assignment_type`,
+    [
+      uuidv4(),
+      courseId,
+      createdBy,
+      assignmentType,
+      title,
+      prompt,
+      maxHintLevel,
+      minWordsForHint,
+      zscoreThreshold,
+      pasteThresholdChars,
+      dueAt,
+      new Date().toISOString()
+    ]
   );
 
   return result.rows[0];
@@ -146,19 +205,69 @@ async function runSeed() {
 
   const course = await upsertCourse({
     teacherId: seededUsers.teacher.id,
-    title: "Academic Writing 101",
-    code: "AW101"
+    title: "Dental Medicine Foundations",
+    code: "DENT201",
+    legacyCodes: ["AW101"]
   });
 
   await ensureEnrollment(course.id, seededUsers["student1@guardrail.local"].id);
   await ensureEnrollment(course.id, seededUsers["student2@guardrail.local"].id);
 
-  const assignment = await ensureAssignment({
-    courseId: course.id,
-    createdBy: seededUsers.teacher.id,
-    title: "Reflective Essay 1",
-    prompt: "Write a reflective essay discussing how AI tools should be used responsibly in academic study."
-  });
+  const assignments = await Promise.all([
+    ensureAssignment({
+      courseId: course.id,
+      createdBy: seededUsers.teacher.id,
+      assignmentType: "essay",
+      title: "Essay: Infection Control Reflection",
+      prompt:
+        "Write a reflective essay explaining how sterilization, surface disinfection, PPE selection, and hand hygiene reduce cross-contamination risk in a dental clinic. Use a realistic chairside scenario and justify each control choice.",
+      maxHintLevel: 3,
+      minWordsForHint: 0,
+      zscoreThreshold: 3.0,
+      pasteThresholdChars: 350,
+      dueAt: daysFromNow(7),
+      legacyTitles: ["Reflective Essay 1"]
+    }),
+    ensureAssignment({
+      courseId: course.id,
+      createdBy: seededUsers.teacher.id,
+      assignmentType: "qa",
+      title: "Q&A: Tooth Eruption and FDI Numbering",
+      prompt:
+        "Use the Socratic tutor to reason through the eruption sequence of the permanent dentition and how to identify teeth using the FDI numbering system. Ask for guided hints rather than direct answers.",
+      maxHintLevel: 3,
+      minWordsForHint: 0,
+      zscoreThreshold: null,
+      pasteThresholdChars: null,
+      dueAt: daysFromNow(5)
+    }),
+    ensureAssignment({
+      courseId: course.id,
+      createdBy: seededUsers.teacher.id,
+      assignmentType: "qa",
+      title: "Q&A: Local Anaesthesia Safety Checks",
+      prompt:
+        "Use guided questioning to work through landmarks, aspiration, contraindications, and post-injection monitoring for common dental local anaesthesia procedures.",
+      maxHintLevel: 3,
+      minWordsForHint: 0,
+      zscoreThreshold: null,
+      pasteThresholdChars: null,
+      dueAt: daysFromNow(10)
+    }),
+    ensureAssignment({
+      courseId: course.id,
+      createdBy: seededUsers.teacher.id,
+      assignmentType: "essay",
+      title: "Essay: Managing Dental Anxiety During Extraction Counseling",
+      prompt:
+        "Write a short essay describing how you would communicate risks, aftercare, and anxiety-management strategies to a nervous patient before a simple extraction.",
+      maxHintLevel: 3,
+      minWordsForHint: 0,
+      zscoreThreshold: 2.8,
+      pasteThresholdChars: 300,
+      dueAt: daysFromNow(14)
+    })
+  ]);
 
   await ensureConsent(seededUsers["student1@guardrail.local"].id, policy.version);
   await ensureConsent(seededUsers["student2@guardrail.local"].id, policy.version);
@@ -168,7 +277,9 @@ async function runSeed() {
   console.log(`Teacher: teacher@guardrail.local / password123`);
   console.log(`Students: student1@guardrail.local, student2@guardrail.local / password123`);
   console.log(`Course: ${course.code} (${course.id})`);
-  console.log(`Assignment: ${assignment.title} (${assignment.id})`);
+  assignments.forEach((assignment) => {
+    console.log(`Assignment: ${assignment.title} [${assignment.assignment_type}] (${assignment.id})`);
+  });
 }
 
 runSeed()

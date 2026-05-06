@@ -289,27 +289,13 @@ function Editor() {
             // 1. Flush any remaining telemetry events
             await flushEvents()
 
-            // 2. Upload essay text as a file to the backend
-            //    The backend stores it and returns a file_url (local or S3).
-            //    When Person A adds a real S3 presigned-URL endpoint, swap this
-            //    call for: GET /api/submissions/presign -> PUT to S3 -> pass s3Url below.
-            const blob = new Blob([text], { type: 'text/plain' })
-            const formData = new FormData()
-            formData.append('file', blob, `submission-${session.id}.txt`)
-            formData.append('sessionId', session.id)
-            formData.append('assignmentId', session.assignmentId || '')
-
-            const token = localStorage.getItem('token')
-            const uploadRes = await fetch(`${API_BASE}/api/submissions`, {
-                method: 'POST',
-                headers: { Authorization: `Bearer ${token}` },
-                body: formData,
+            // 2. Submit the essay as JSON. The backend currently persists the
+            //    text directly and associates it with the telemetry session.
+            await apiPost('/api/submissions', {
+                assignmentId: session.assignmentId || assignmentId,
+                sessionId: session.id,
+                contentText: text,
             })
-
-            if (!uploadRes.ok) {
-                const uploadData = await uploadRes.json().catch(() => ({}))
-                throw new Error(uploadData.message || 'File upload failed.')
-            }
 
             // 3. Mark telemetry session as complete and lock it
             await apiPost(`/api/telemetry/sessions/${session.id}/complete`, {})

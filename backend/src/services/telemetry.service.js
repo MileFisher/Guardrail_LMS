@@ -11,10 +11,16 @@ const { generateSessionKey } = require("./hmac.service");
 const { enqueueSessionAnalysis } = require("./session-analytics.service");
 
 async function openTelemetrySession({ assignmentId, userId, deviceType, screenResolution }) {
-  await ensureAssignmentAccess(assignmentId, {
+  const assignment = await ensureAssignmentAccess(assignmentId, {
     id: userId,
     role: "student"
   });
+
+  if (assignment.assignmentType !== "essay") {
+    const error = new Error("Integrity Monitor is only available for essay assignments.");
+    error.statusCode = 409;
+    throw error;
+  }
 
   const hmacKey = generateSessionKey();
 

@@ -27,6 +27,44 @@ async function getAllUsers() {
   return result.rows.map(mapUser);
 }
 
+async function updateUser(id, updates) {
+  const assignments = [];
+  const values = [];
+
+  if (updates.role !== undefined) {
+    values.push(updates.role);
+    assignments.push(`role = $${values.length}`);
+  }
+
+  if (updates.displayName !== undefined) {
+    values.push(updates.displayName);
+    assignments.push(`display_name = $${values.length}`);
+  }
+
+  if (updates.status !== undefined) {
+    values.push(updates.status);
+    assignments.push(`status = $${values.length}`);
+  }
+
+  if (assignments.length === 0) {
+    return findUserById(id);
+  }
+
+  values.push(new Date().toISOString());
+  assignments.push(`updated_at = $${values.length}`);
+  values.push(id);
+
+  const result = await query(
+    `UPDATE users
+     SET ${assignments.join(", ")}
+     WHERE id = $${values.length}
+     RETURNING id, email, password_hash, role, display_name, status, created_at, updated_at`,
+    values
+  );
+
+  return mapUser(result.rows[0]);
+}
+
 async function findUserByEmail(email) {
   const result = await query(
     `SELECT id, email, password_hash, role, display_name, status, created_at, updated_at
@@ -88,5 +126,6 @@ module.exports = {
   findUserByEmail,
   findUserById,
   getAllUsers,
-  touchUser
+  touchUser,
+  updateUser
 };
