@@ -1,7 +1,8 @@
 const {
   getStudentHintLogs,
   markHintLimitReached,
-  requestHint
+  requestHint,
+  saveMcqAnswers
 } = require("../services/tutor.service");
 
 async function createHint(req, res, next) {
@@ -43,8 +44,24 @@ async function getStudentLogs(req, res, next) {
   }
 }
 
+async function saveMcq(req, res, next) {
+  try {
+    return res.status(200).json({
+      response: await saveMcqAnswers({
+        user: req.user,
+        assignmentId: req.body.assignmentId,
+        courseId: req.body.courseId,
+        answers: req.body.answers
+      })
+    });
+  } catch (error) {
+    return next(error);
+  }
+}
+
 module.exports = {
   closeHintSession,
   createHint,
-  getStudentLogs
+  getStudentLogs,
+  saveMcq
 };

@@ -31,13 +31,45 @@ function validateAssignmentInput({ title, prompt }) {
 function normalizeAssignmentType(assignmentType) {
   const normalized = String(assignmentType || "essay").trim().toLowerCase();
 
-  if (!["essay", "qa"].includes(normalized)) {
-    const error = new Error("assignmentType must be essay or qa.");
+  if (!["essay", "qa", "mcq"].includes(normalized)) {
+    const error = new Error("assignmentType must be essay, qa, or mcq.");
     error.statusCode = 400;
     throw error;
   }
 
   return normalized;
+}
+
+function isTutorAssignmentType(assignmentType) {
+  return ["qa", "mcq"].includes(assignmentType);
+}
+
+function sanitizeMcqQuestionsForStudent(mcqQuestions) {
+  if (!Array.isArray(mcqQuestions)) {
+    return [];
+  }
+
+  return mcqQuestions.map((question) => ({
+    id: question.id,
+    prompt: question.prompt,
+    options: Array.isArray(question.options)
+      ? question.options.map((option) => ({
+          id: option.id,
+          text: option.text
+        }))
+      : []
+  }));
+}
+
+function sanitizeAssignmentForActor(assignment, actor) {
+  if (!assignment || actor?.role !== "student" || assignment.assignmentType !== "mcq") {
+    return assignment;
+  }
+
+  return {
+    ...assignment,
+    mcqQuestions: sanitizeMcqQuestionsForStudent(assignment.mcqQuestions)
+  };
 }
 
 async function ensureTeacherUser(userId) {
@@ -150,7 +182,7 @@ async function listCourseEnrollments({ courseId, actor }) {
   return listEnrollmentsByCourse(courseId);
 }
 
-async function createCourseAssignment({ courseId, actor, assignmentType, title, prompt, maxHintLevel, minWordsForHint, zscoreThreshold, pasteThresholdChars, dueAt }) {
+async function createCourseAssignment({ courseId, actor, assignmentType, title, prompt, mcqQuestions, maxHintLevel, minWordsForHint, zscoreThreshold, pasteThresholdChars, dueAt }) {
   const course = await ensureCourseAccess(courseId, actor);
 
   if (actor.role === "student") {
@@ -174,8 +206,9 @@ async function createCourseAssignment({ courseId, actor, assignmentType, title, 
     assignmentType: normalizedAssignmentType,
     title: title.trim(),
     prompt: prompt.trim(),
-    maxHintLevel: normalizedAssignmentType === "qa" ? maxHintLevel : 3,
-    minWordsForHint: normalizedAssignmentType === "qa" ? minWordsForHint : 0,
+    mcqQuestions: normalizedAssignmentType === "mcq" ? mcqQuestions : [],
+    maxHintLevel: isTutorAssignmentType(normalizedAssignmentType) ? maxHintLevel : 3,
+    minWordsForHint: isTutorAssignmentType(normalizedAssignmentType) ? minWordsForHint : 0,
     zscoreThreshold: normalizedAssignmentType === "essay" ? zscoreThreshold : null,
     pasteThresholdChars: normalizedAssignmentType === "essay" ? pasteThresholdChars : null,
     dueAt
@@ -184,9 +217,11 @@ async function createCourseAssignment({ courseId, actor, assignmentType, title, 
 
 async function listCourseAssignments({ courseId, actor }) {
   await ensureCourseAccess(courseId, actor);
-  return listAssignmentsByCourse(courseId, {
+  const assignments = await listAssignmentsByCourse(courseId, {
     studentId: actor.role === "student" ? actor.id : null
   });
+
+  return assignments.map((assignment) => sanitizeAssignmentForActor(assignment, actor));
 }
 
 async function ensureAssignmentAccess(assignmentId, actor) {

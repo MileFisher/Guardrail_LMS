@@ -8,6 +8,7 @@ const {
   getOrCreateActiveStudySession,
   listHintInteractionsForStudent
 } = require("../data/tutor.store");
+const { upsertMcqResponse } = require("../data/mcq-response.store");
 const { ensureCourseAccess } = require("./course.service");
 const { requestSocraticHint } = require("./openai-tutor.service");
 
@@ -28,6 +29,70 @@ function countWords(text) {
 
 function getMaxHintLevel(assignment) {
   return Number(assignment?.maxHintLevel || DEFAULT_MAX_HINT_LEVEL);
+}
+
+function isTutorAssignment(assignment) {
+  return ["qa", "mcq"].includes(assignment?.assignmentType);
+}
+
+function normalizeMcqAnswers(assignment, answers) {
+  if (!answers || typeof answers !== "object" || Array.isArray(answers)) {
+    return {};
+  }
+
+  const byQuestionId = new Map(
+    (Array.isArray(assignment?.mcqQuestions) ? assignment.mcqQuestions : []).map((question) => [question.id, question])
+  );
+
+  return Object.entries(answers).reduce((acc, [questionId, optionId]) => {
+    const question = byQuestionId.get(questionId);
+    if (!question || typeof optionId !== "string") {
+      return acc;
+    }
+
+    const optionExists = Array.isArray(question.options) && question.options.some((option) => option.id === optionId);
+    if (optionExists) {
+      acc[questionId] = optionId;
+    }
+
+    return acc;
+  }, {});
+}
+
+async function ensureTutorStudentAccess({ user, assignmentId, courseId, requireMcq = false }) {
+  if (user.role !== "student") {
+    const error = new Error("Only students can access tutor workspaces.");
+    error.statusCode = 403;
+    throw error;
+  }
+
+  const context = await resolveTutorContext({ assignmentId, courseId });
+  const assignment = context.assignment;
+  const resolvedCourseId = context.courseId;
+
+  if (assignment && !isTutorAssignment(assignment)) {
+    const error = new Error("Socratic Tutor is only available for Q&A and MCQ assignments.");
+    error.statusCode = 409;
+    throw error;
+  }
+
+  if (requireMcq && assignment?.assignmentType !== "mcq") {
+    const error = new Error("MCQ responses are only available for MCQ assignments.");
+    error.statusCode = 409;
+    throw error;
+  }
+
+  const enrollment = await findEnrollment(resolvedCourseId, user.id);
+  if (!enrollment) {
+    const error = new Error("You are not enrolled in this course.");
+    error.statusCode = 403;
+    throw error;
+  }
+
+  return {
+    assignment,
+    courseId: resolvedCourseId
+  };
 }
 
 async function resolveTutorContext({ assignmentId, courseId }) {
@@ -60,34 +125,15 @@ async function resolveTutorContext({ assignmentId, courseId }) {
 }
 
 async function requestHint({ user, assignmentId, courseId, message }) {
-  if (user.role !== "student") {
-    const error = new Error("Only students can request tutor hints.");
-    error.statusCode = 403;
-    throw error;
-  }
-
   if (!message || !message.trim()) {
     const error = new Error("message is required.");
     error.statusCode = 400;
     throw error;
   }
 
-  const context = await resolveTutorContext({ assignmentId, courseId });
+  const context = await ensureTutorStudentAccess({ user, assignmentId, courseId });
   const assignment = context.assignment;
   const resolvedCourseId = context.courseId;
-
-  if (assignment && assignment.assignmentType !== "qa") {
-    const error = new Error("Socratic Tutor is only available for Q&A assignments.");
-    error.statusCode = 409;
-    throw error;
-  }
-
-  const enrollment = await findEnrollment(resolvedCourseId, user.id);
-  if (!enrollment) {
-    const error = new Error("You are not enrolled in this course.");
-    error.statusCode = 403;
-    throw error;
-  }
 
   const session = await getOrCreateActiveStudySession({
     courseId: resolvedCourseId,
@@ -155,13 +201,7 @@ async function requestHint({ user, assignmentId, courseId, message }) {
 }
 
 async function markHintLimitReached({ user, assignmentId, courseId }) {
-  if (user.role !== "student") {
-    const error = new Error("Only students can close their tutor session.");
-    error.statusCode = 403;
-    throw error;
-  }
-
-  const context = await resolveTutorContext({ assignmentId, courseId });
+  const context = await ensureTutorStudentAccess({ user, assignmentId, courseId });
 
   const closedSessions = await closeActiveStudySession({
     courseId: context.courseId,
@@ -170,6 +210,26 @@ async function markHintLimitReached({ user, assignmentId, courseId }) {
   });
 
   return { closedSessions };
+}
+
+async function saveMcqAnswers({ user, assignmentId, courseId, answers }) {
+  const context = await ensureTutorStudentAccess({ user, assignmentId, courseId, requireMcq: true });
+  const normalizedAnswers = normalizeMcqAnswers(context.assignment, answers);
+
+  const session = await getOrCreateActiveStudySession({
+    courseId: context.courseId,
+    studentId: user.id,
+    assignmentId: assignmentId || null
+  });
+
+  const response = await upsertMcqResponse({
+    studySessionId: session.id,
+    assignmentId: context.assignment.id,
+    studentId: user.id,
+    answers: normalizedAnswers
+  });
+
+  return response;
 }
 
 async function getStudentHintLogs({ actor, studentId, courseId }) {
@@ -203,5 +263,6 @@ async function getStudentHintLogs({ actor, studentId, courseId }) {
 module.exports = {
   getStudentHintLogs,
   markHintLimitReached,
-  requestHint
+  requestHint,
+  saveMcqAnswers
 };

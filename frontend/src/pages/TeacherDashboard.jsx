@@ -3,10 +3,20 @@ import { useNavigate } from 'react-router-dom'
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || ''
 const TAB = { OVERVIEW: 'overview', ASSIGNMENTS: 'assignments', STUDENTS: 'students' }
-const ASSIGNMENT_TYPE = { ESSAY: 'essay', QA: 'qa' }
+const ASSIGNMENT_TYPE = { ESSAY: 'essay', QA: 'qa', MCQ: 'mcq' }
+
+function isEssayAssignmentType(type) {
+    return (type || ASSIGNMENT_TYPE.ESSAY) === ASSIGNMENT_TYPE.ESSAY
+}
+
+function isTutorAssignmentType(type) {
+    return [ASSIGNMENT_TYPE.QA, ASSIGNMENT_TYPE.MCQ].includes(type)
+}
 
 function getAssignmentTypeLabel(type) {
-    return type === ASSIGNMENT_TYPE.QA ? 'Socratic Q&A tutor' : 'Integrity Monitor essay'
+    if (type === ASSIGNMENT_TYPE.QA) return 'Socratic Q&A tutor'
+    if (type === ASSIGNMENT_TYPE.MCQ) return 'MCQ practice + AI tutor'
+    return 'Integrity Monitor essay'
 }
 
 // ---------------- API helpers ----------------
@@ -157,7 +167,8 @@ function CreateAssignmentModal({ courseId, onClose, onCreate, loading }) {
     const [zscoreThreshold, setZscoreThreshold] = useState('2.0')
     const [pasteThreshold, setPasteThreshold] = useState('200')
     const [error, setError] = useState('')
-    const isEssayAssignment = assignmentType === ASSIGNMENT_TYPE.ESSAY
+    const isEssayAssignment = isEssayAssignmentType(assignmentType)
+    const isMcqAssignment = assignmentType === ASSIGNMENT_TYPE.MCQ
 
     const handleSubmit = async () => {
         if (!title.trim()) {
@@ -192,13 +203,19 @@ function CreateAssignmentModal({ courseId, onClose, onCreate, loading }) {
                         value={title}
                         onChange={(e) => setTitle(e.target.value)}
                         style={inputStyle}
-                        placeholder={isEssayAssignment ? 'e.g. Essay: Infection Control Reflection' : 'e.g. Q&A: Tooth Eruption Stages'}
+                        placeholder={
+                            isEssayAssignment
+                                ? 'e.g. Essay: Writing a Formal Email'
+                                : isMcqAssignment
+                                    ? 'e.g. MCQ: Verb Tenses and Sentence Correction'
+                                    : 'e.g. Q&A: Thesis Statement Practice'
+                        }
                     />
                 </div>
 
                 <div style={{ marginBottom: '14px' }}>
                     <label style={labelStyle}>Assignment type</label>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '10px' }}>
                         {[
                             {
                                 value: ASSIGNMENT_TYPE.ESSAY,
@@ -209,6 +226,11 @@ function CreateAssignmentModal({ courseId, onClose, onCreate, loading }) {
                                 value: ASSIGNMENT_TYPE.QA,
                                 title: 'Q&A + Socratic Tutor',
                                 description: 'Students open the guided tutor workspace. No essay submission or integrity thresholds are used.',
+                            },
+                            {
+                                value: ASSIGNMENT_TYPE.MCQ,
+                                title: 'MCQ + AI Tutor',
+                                description: 'Students work through multiple-choice questions and can ask the AI for guided hints without seeing direct answers.',
                             },
                         ].map((option) => {
                             const selected = assignmentType === option.value
@@ -281,9 +303,13 @@ function CreateAssignmentModal({ courseId, onClose, onCreate, loading }) {
                     </div>
                 ) : (
                     <div style={{ background: '#fffbeb', borderRadius: '8px', padding: '12px', marginBottom: '14px', border: '1px solid #fde68a' }}>
-                        <p style={{ margin: '0 0 6px', fontSize: '12px', fontWeight: '600', color: '#92400e' }}>Socratic tutor assignment</p>
+                        <p style={{ margin: '0 0 6px', fontSize: '12px', fontWeight: '600', color: '#92400e' }}>
+                            {isMcqAssignment ? 'MCQ tutor assignment' : 'Socratic tutor assignment'}
+                        </p>
                         <p style={{ margin: 0, fontSize: '12px', lineHeight: 1.5, color: '#7c5a15' }}>
-                            Students will use guided hints only. Essay submission metrics and integrity thresholds stay off for this assignment type.
+                            {isMcqAssignment
+                                ? 'Students work through multiple questions and can ask the AI for guided hints, grammar explanations, or elimination strategies. Essay submission metrics and integrity thresholds stay off.'
+                                : 'Students will use guided hints only. Essay submission metrics and integrity thresholds stay off for this assignment type.'}
                         </p>
                     </div>
                 )}
@@ -536,7 +562,7 @@ function CoursePanel({ course, navigate, onCreateAssignment, onAddStudent }) {
                         </p>
                     ) : (
                         course.assignments.map((a, i) => {
-                            const isEssayAssignment = a.assignmentType !== ASSIGNMENT_TYPE.QA
+                            const isEssayAssignment = isEssayAssignmentType(a.assignmentType)
                             const progressPercent = Math.round((a.total ? a.submissions / a.total : 0) * 100)
 
                             return (

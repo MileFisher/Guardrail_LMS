@@ -25,7 +25,6 @@ async function apiPost(path, body) {
     return data
 }
 
-// ── Hint level config ─────────────────────────────────────────────────────────
 const HINT_LEVELS = {
     1: {
         label: 'L1 · Nudge',
@@ -45,7 +44,7 @@ const HINT_LEVELS = {
     },
     3: {
         label: 'L3 · Guided',
-        description: 'Near-answer — you complete the last step',
+        description: 'Near-answer, you finish the last step',
         color: '#c2410c',
         bg: '#fff7ed',
         border: '#fed7aa',
@@ -53,11 +52,19 @@ const HINT_LEVELS = {
     },
 }
 
-// ── Sub-components ────────────────────────────────────────────────────────────
+function formatSavedTime(value) {
+    if (!value) return ''
+    return new Date(value).toLocaleString('en-GB', {
+        day: '2-digit',
+        month: 'short',
+        hour: '2-digit',
+        minute: '2-digit',
+    })
+}
 
 function HintLevelBar({ current, max }) {
     return (
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
             {[1, 2, 3].map((lvl) => {
                 const cfg = HINT_LEVELS[lvl]
                 const active = lvl === current
@@ -76,11 +83,8 @@ function HintLevelBar({ current, max }) {
                             fontSize: '11px',
                             fontWeight: active ? '700' : '500',
                             background: active ? cfg.bg : locked ? '#f5f5f5' : '#fafafa',
-                            color: active ? cfg.color : locked ? '#ccc' : '#aaa',
+                            color: active ? cfg.color : locked ? '#ccc' : '#888',
                             border: `1.5px solid ${active ? cfg.border : locked ? '#eee' : '#eee'}`,
-                            transition: 'all .2s',
-                            cursor: 'default',
-                            userSelect: 'none',
                         }}
                     >
                         <span
@@ -106,13 +110,7 @@ function ChatBubble({ msg }) {
 
     if (isSystem) {
         return (
-            <div
-                style={{
-                    display: 'flex',
-                    justifyContent: 'center',
-                    margin: '8px 0',
-                }}
-            >
+            <div style={{ display: 'flex', justifyContent: 'center', margin: '8px 0' }}>
                 <div
                     style={{
                         padding: '6px 14px',
@@ -122,7 +120,7 @@ function ChatBubble({ msg }) {
                         borderRadius: '20px',
                         fontSize: '12px',
                         fontWeight: '500',
-                        maxWidth: '400px',
+                        maxWidth: '420px',
                         textAlign: 'center',
                     }}
                 >
@@ -164,7 +162,7 @@ function ChatBubble({ msg }) {
 
             <div
                 style={{
-                    maxWidth: '68%',
+                    maxWidth: '78%',
                     padding: '11px 15px',
                     borderRadius: isUser ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
                     background: isUser ? 'linear-gradient(135deg, #1a5fa8, #2563eb)' : 'white',
@@ -239,13 +237,12 @@ function MaxHintMessage({ onContact }) {
                 textAlign: 'center',
             }}
         >
-            <div style={{ fontSize: '24px', marginBottom: '8px' }}>🎓</div>
+            <div style={{ fontSize: '24px', marginBottom: '8px' }}>Tutor limit reached</div>
             <p style={{ margin: '0 0 6px', fontSize: '14px', fontWeight: '700', color: '#92400e' }}>
                 Maximum hint level reached
             </p>
             <p style={{ margin: '0 0 12px', fontSize: '13px', color: '#b45309', lineHeight: 1.5 }}>
-                You've received all available hints for this topic. To go further, try working through the last
-                step on your own — or consult your teacher or course materials.
+                You have reached the final hint level for this session. Continue working on your own or contact your teacher.
             </p>
             <button
                 onClick={onContact}
@@ -266,7 +263,84 @@ function MaxHintMessage({ onContact }) {
     )
 }
 
-// ── Main Component ────────────────────────────────────────────────────────────
+function McqQuestionCard({ index, question, selectedOption, onSelect, onAskAi }) {
+    return (
+        <div
+            style={{
+                background: 'white',
+                borderRadius: '14px',
+                border: '1px solid #e6ebf2',
+                boxShadow: '0 1px 4px rgba(0,0,0,0.05)',
+                padding: '18px',
+            }}
+        >
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', alignItems: 'flex-start', marginBottom: '12px' }}>
+                <div>
+                    <p style={{ margin: '0 0 6px', fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '700', letterSpacing: '0.06em' }}>
+                        Question {index + 1}
+                    </p>
+                    <p style={{ margin: 0, fontSize: '15px', color: '#1a1a2e', lineHeight: 1.6, fontWeight: '600' }}>
+                        {question.prompt}
+                    </p>
+                </div>
+                <button
+                    type="button"
+                    onClick={() => onAskAi(question, selectedOption)}
+                    style={{
+                        padding: '7px 10px',
+                        borderRadius: '8px',
+                        border: '1px solid #bfdbfe',
+                        background: '#eff6ff',
+                        color: '#1d4ed8',
+                        fontSize: '12px',
+                        fontWeight: '600',
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap',
+                    }}
+                >
+                    Ask AI
+                </button>
+            </div>
+
+            <div style={{ display: 'grid', gap: '10px' }}>
+                {(question.options || []).map((option) => {
+                    const checked = selectedOption === option.id
+                    return (
+                        <label
+                            key={option.id}
+                            style={{
+                                display: 'flex',
+                                alignItems: 'flex-start',
+                                gap: '10px',
+                                padding: '12px',
+                                borderRadius: '10px',
+                                border: checked ? '1.5px solid #1a5fa8' : '1px solid #dde5ef',
+                                background: checked ? '#eff6ff' : '#fafcff',
+                                cursor: 'pointer',
+                            }}
+                        >
+                            <input
+                                type="radio"
+                                name={question.id}
+                                checked={checked}
+                                onChange={() => onSelect(question.id, option.id)}
+                                style={{ marginTop: '3px' }}
+                            />
+                            <div>
+                                <p style={{ margin: '0 0 3px', fontSize: '12px', color: '#1a5fa8', fontWeight: '700' }}>
+                                    Option {option.id}
+                                </p>
+                                <p style={{ margin: 0, fontSize: '14px', color: '#334155', lineHeight: 1.5 }}>
+                                    {option.text}
+                                </p>
+                            </div>
+                        </label>
+                    )
+                })}
+            </div>
+        </div>
+    )
+}
 
 function StudySession() {
     const navigate = useNavigate()
@@ -283,22 +357,32 @@ function StudySession() {
     const [loading, setLoading] = useState(false)
     const [pageLoading, setPageLoading] = useState(true)
     const [error, setError] = useState('')
+    const [mcqAnswers, setMcqAnswers] = useState({})
+    const [mcqSaveState, setMcqSaveState] = useState('idle')
+    const [mcqSavedAt, setMcqSavedAt] = useState('')
     const messagesEndRef = useRef(null)
     const textareaRef = useRef(null)
+    const saveRequestRef = useRef(0)
 
-    // ── Bootstrap ─────────────────────────────────────────────────────────────
+    const isMcqAssignment = assignment?.assignmentType === 'mcq'
+    const mcqQuestions = Array.isArray(assignment?.mcqQuestions) ? assignment.mcqQuestions : []
+
     useEffect(() => {
         const raw = localStorage.getItem('user')
-        if (raw) setUser(JSON.parse(raw))
+        if (raw) {
+            setUser(JSON.parse(raw))
+        }
 
         async function load() {
             try {
                 if (assignmentId && courseId) {
                     const data = await apiGet(`/api/courses/${courseId}/assignments`).catch(() => null)
                     if (data) {
-                        const found = data.assignments?.find((a) => String(a.id) === String(assignmentId))
+                        const found = data.assignments?.find((item) => String(item.id) === String(assignmentId))
                         if (found) {
                             setAssignment(found)
+                            setMcqAnswers(found.studentMcqResponse || {})
+                            setMcqSavedAt(found.studentMcqUpdatedAt || '')
                         }
                     }
                 }
@@ -308,20 +392,18 @@ function StudySession() {
                 setPageLoading(false)
             }
         }
+
         load()
     }, [assignmentId, courseId])
 
-    // ── Auto-scroll ───────────────────────────────────────────────────────────
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
     }, [messages])
 
-    // ── Word tracking ─────────────────────────────────────────────────────────
     function handleInputChange(e) {
         setInput(e.target.value)
     }
 
-    // ── Send hint request ─────────────────────────────────────────────────────
     async function handleSend() {
         const trimmed = input.trim()
         if (!trimmed || loading || maxHintReached) return
@@ -341,32 +423,30 @@ function StudySession() {
             })
 
             if (result.jailbreakDetected) {
-                // Replace loading bubble with polite refusal — do not show hint content
                 setMessages((prev) =>
-                    prev.map((m) =>
-                        m.id === loadingMsg.id
+                    prev.map((msg) =>
+                        msg.id === loadingMsg.id
                             ? {
-                                  ...m,
+                                  ...msg,
                                   content: result.response || result.message,
                                   loading: false,
                                   variant: 'error',
                                   role: 'system',
                               }
-                            : m
+                            : msg
                     )
                 )
             } else {
-                // Normal hint — update loading bubble with response
                 setMessages((prev) =>
-                    prev.map((m) =>
-                        m.id === loadingMsg.id
+                    prev.map((msg) =>
+                        msg.id === loadingMsg.id
                             ? {
-                                  ...m,
+                                  ...msg,
                                   content: result.response || result.message,
                                   loading: false,
                                   hintLevel: result.hintLevel || hintLevel,
                               }
-                            : m
+                            : msg
                     )
                 )
 
@@ -379,12 +459,11 @@ function StudySession() {
                         assignmentId,
                         courseId,
                         hintLevel: newLevel,
-                    }).catch(() => {}) // fire-and-forget
+                    }).catch(() => {})
                 }
             }
         } catch (err) {
-            // Remove loading bubble, show error
-            setMessages((prev) => prev.filter((m) => m.id !== loadingMsg.id))
+            setMessages((prev) => prev.filter((msg) => msg.id !== loadingMsg.id))
             setMessages((prev) => [
                 ...prev,
                 {
@@ -411,6 +490,58 @@ function StudySession() {
         navigate('/login')
     }
 
+    async function persistMcqAnswers(nextAnswers) {
+        if (!assignmentId || !courseId || !isMcqAssignment) return
+
+        const requestId = saveRequestRef.current + 1
+        saveRequestRef.current = requestId
+        setMcqSaveState('saving')
+
+        try {
+            const result = await apiPost('/api/tutor/mcq-response', {
+                assignmentId,
+                courseId,
+                answers: nextAnswers,
+            })
+
+            if (saveRequestRef.current !== requestId) return
+
+            setMcqAnswers(result.response?.answers || nextAnswers)
+            setMcqSavedAt(result.response?.updatedAt || '')
+            setMcqSaveState('saved')
+        } catch (err) {
+            if (saveRequestRef.current !== requestId) return
+            setMcqSaveState('error')
+            setError(err.message || 'Failed to save MCQ answers.')
+        }
+    }
+
+    function handleSelectMcqAnswer(questionId, optionId) {
+        const nextAnswers = {
+            ...mcqAnswers,
+            [questionId]: optionId,
+        }
+
+        setMcqAnswers(nextAnswers)
+        setError('')
+        persistMcqAnswers(nextAnswers)
+    }
+
+    function handleClearMcqAnswers() {
+        setMcqAnswers({})
+        setError('')
+        persistMcqAnswers({})
+    }
+
+    function handleAskAiAboutQuestion(question, selectedOption) {
+        const prompt = selectedOption
+            ? `I am working on question "${question.prompt}". I currently chose option ${selectedOption}. Please help me think through whether that choice makes sense without telling me the final answer.`
+            : `I am working on question "${question.prompt}". Please help me compare the options and think through it without telling me the final answer.`
+
+        setInput(prompt)
+        textareaRef.current?.focus()
+    }
+
     if (pageLoading) {
         return (
             <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', background: '#f0f4f8', color: '#666', fontFamily: "'Segoe UI', sans-serif" }}>
@@ -418,6 +549,8 @@ function StudySession() {
             </div>
         )
     }
+
+    const answeredCount = mcqQuestions.filter((question) => mcqAnswers[question.id]).length
 
     return (
         <div
@@ -435,10 +568,14 @@ function StudySession() {
                     40% { transform: translateY(-5px); opacity: 1; }
                 }
                 textarea:focus { outline: none; }
-                button:hover { opacity: .88; }
+                button:hover { opacity: .92; }
+                @media (max-width: 980px) {
+                    .study-grid {
+                        grid-template-columns: 1fr !important;
+                    }
+                }
             `}</style>
 
-            {/* ── Navbar ─────────────────────────────────────────────────────── */}
             <nav
                 style={{
                     height: '56px',
@@ -454,7 +591,7 @@ function StudySession() {
                     flexShrink: 0,
                 }}
             >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
                     <div
                         style={{
                             width: '32px',
@@ -464,12 +601,13 @@ function StudySession() {
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
+                            flexShrink: 0,
                         }}
                     >
                         <span style={{ fontSize: '11px', fontWeight: '700', color: '#1a5fa8' }}>GR</span>
                     </div>
                     <span style={{ color: 'white', fontWeight: '600', fontSize: '15px' }}>Guardrail LMS</span>
-                    <span style={{ color: 'rgba(255,255,255,0.45)', fontSize: '13px', marginLeft: '4px' }}>/ Study Session</span>
+                    <span style={{ color: 'rgba(255,255,255,0.45)', fontSize: '13px' }}>/ Study Session</span>
                     {assignment && (
                         <span
                             style={{
@@ -478,7 +616,9 @@ function StudySession() {
                                 padding: '2px 10px',
                                 borderRadius: '12px',
                                 fontSize: '12px',
-                                marginLeft: '6px',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
                             }}
                         >
                             {assignment.title}
@@ -498,7 +638,7 @@ function StudySession() {
                             cursor: 'pointer',
                         }}
                     >
-                        ← Dashboard
+                        Back
                     </button>
                     <span style={{ color: 'rgba(255,255,255,0.85)', fontSize: '13px' }}>
                         {user?.displayName || 'Student'}
@@ -520,225 +660,308 @@ function StudySession() {
                 </div>
             </nav>
 
-            {/* ── Main layout ────────────────────────────────────────────────── */}
-            <div style={{ flex: 1, display: 'flex', maxWidth: '900px', width: '100%', margin: '0 auto', padding: '1.5rem', gap: '1.5rem', boxSizing: 'border-box', alignItems: 'flex-start' }}>
-
-                {/* ── Left: hint level sidebar ──────────────────────────────── */}
-                <div style={{ width: '220px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    {/* Hint progress card */}
-                    <div style={{ background: 'white', borderRadius: '12px', padding: '16px', boxShadow: '0 1px 4px rgba(0,0,0,0.07)' }}>
-                        <p style={{ margin: '0 0 12px', fontSize: '11px', fontWeight: '700', color: '#888', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                            Hint Progress
-                        </p>
-                        {[1, 2, 3].map((lvl) => {
-                            const cfg = HINT_LEVELS[lvl]
-                            const active = lvl === hintLevel
-                            const past = lvl < hintLevel
-                            return (
-                                <div
-                                    key={lvl}
-                                    style={{
-                                        display: 'flex',
-                                        alignItems: 'flex-start',
-                                        gap: '10px',
-                                        padding: '10px 10px',
-                                        borderRadius: '8px',
-                                        marginBottom: '6px',
-                                        background: active ? cfg.bg : 'transparent',
-                                        border: `1.5px solid ${active ? cfg.border : 'transparent'}`,
-                                        transition: 'all .25s',
-                                    }}
-                                >
-                                    <div
-                                        style={{
-                                            width: '22px',
-                                            height: '22px',
-                                            borderRadius: '50%',
-                                            background: past ? '#22c55e' : active ? cfg.dot : '#e5e7eb',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'center',
-                                            flexShrink: 0,
-                                            color: 'white',
-                                            fontSize: '10px',
-                                            fontWeight: '700',
-                                        }}
-                                    >
-                                        {past ? '✓' : lvl}
-                                    </div>
+            <div style={{ maxWidth: '1320px', width: '100%', margin: '0 auto', padding: '1.5rem', boxSizing: 'border-box' }}>
+                <div
+                    className="study-grid"
+                    style={{
+                        display: 'grid',
+                        gridTemplateColumns: isMcqAssignment ? 'minmax(0, 1.1fr) minmax(360px, 0.9fr)' : '260px minmax(0, 1fr)',
+                        gap: '1.5rem',
+                        alignItems: 'start',
+                    }}
+                >
+                    {isMcqAssignment ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', minWidth: 0 }}>
+                            <div
+                                style={{
+                                    background: 'white',
+                                    borderRadius: '14px',
+                                    boxShadow: '0 1px 4px rgba(0,0,0,0.07)',
+                                    padding: '18px 20px',
+                                }}
+                            >
+                                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
                                     <div>
-                                        <p style={{ margin: 0, fontSize: '12px', fontWeight: active ? '700' : '500', color: active ? cfg.color : past ? '#15803d' : '#aaa' }}>
-                                            {cfg.label}
+                                        <p style={{ margin: '0 0 6px', fontSize: '11px', color: '#888', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: '700' }}>
+                                            MCQ Practice
                                         </p>
-                                        <p style={{ margin: 0, fontSize: '10px', color: '#bbb', lineHeight: 1.4, marginTop: '1px' }}>
-                                            {cfg.description}
+                                        <p style={{ margin: '0 0 8px', fontSize: '18px', fontWeight: '700', color: '#1a1a2e' }}>
+                                            Answer the questions, then use the AI for hints
+                                        </p>
+                                        <p style={{ margin: 0, fontSize: '13px', color: '#64748b', lineHeight: 1.6 }}>
+                                            {assignment?.prompt || 'Read each question, select an option, and ask the tutor when you want guided help.'}
+                                        </p>
+                                    </div>
+                                    <div style={{ textAlign: 'right' }}>
+                                        <p style={{ margin: '0 0 4px', fontSize: '12px', fontWeight: '700', color: '#1a5fa8' }}>
+                                            {answeredCount}/{mcqQuestions.length} answered
+                                        </p>
+                                        <p style={{ margin: 0, fontSize: '12px', color: mcqSaveState === 'error' ? '#b91c1c' : '#888' }}>
+                                            {mcqSaveState === 'saving'
+                                                ? 'Saving answers...'
+                                                : mcqSaveState === 'saved' && mcqSavedAt
+                                                    ? `Saved ${formatSavedTime(mcqSavedAt)}`
+                                                    : mcqSaveState === 'error'
+                                                        ? 'Save failed'
+                                                        : 'Selections save to your workspace'}
                                         </p>
                                     </div>
                                 </div>
-                            )
-                        })}
-                    </div>
-
-                    {/* Rules card */}
-                    <div style={{ background: 'white', borderRadius: '12px', padding: '16px', boxShadow: '0 1px 4px rgba(0,0,0,0.07)' }}>
-                        <p style={{ margin: '0 0 8px', fontSize: '11px', fontWeight: '700', color: '#888', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                            How it works
-                        </p>
-                        {[
-                            'Type your question or show your thinking',
-                            'Hints guide you — they won\'t give direct answers',
-                            'Hint level advances as you engage more',
-                            'After L3, consult your teacher',
-                        ].map((tip, i) => (
-                            <div key={i} style={{ display: 'flex', gap: '8px', marginBottom: '7px', alignItems: 'flex-start' }}>
-                                <span style={{ color: '#1a5fa8', fontWeight: '700', fontSize: '12px', flexShrink: 0 }}>{i + 1}.</span>
-                                <span style={{ fontSize: '12px', color: '#666', lineHeight: 1.45 }}>{tip}</span>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', alignItems: 'center', marginTop: '14px', flexWrap: 'wrap' }}>
+                                    <HintLevelBar current={hintLevel} max={3} />
+                                    <button
+                                        type="button"
+                                        onClick={handleClearMcqAnswers}
+                                        style={{
+                                            padding: '8px 12px',
+                                            borderRadius: '8px',
+                                            border: '1px solid #fecaca',
+                                            background: '#fff1f2',
+                                            color: '#be123c',
+                                            fontSize: '12px',
+                                            fontWeight: '600',
+                                            cursor: 'pointer',
+                                        }}
+                                    >
+                                        Clear selections
+                                    </button>
+                                </div>
                             </div>
-                        ))}
-                    </div>
 
-                    {/* Log note */}
-                    <div style={{ padding: '10px 12px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '8px' }}>
-                        <p style={{ margin: 0, fontSize: '11px', color: '#92400e', lineHeight: 1.4 }}>
-                            📋 Your hint interactions are logged and visible to your teacher.
-                        </p>
-                    </div>
-                </div>
-
-                {/* ── Right: chat panel ─────────────────────────────────────── */}
-                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '12px', minWidth: 0 }}>
-
-                    {/* Header bar with hint level indicator */}
-                    <div
-                        style={{
-                            background: 'white',
-                            borderRadius: '12px',
-                            padding: '12px 16px',
-                            boxShadow: '0 1px 4px rgba(0,0,0,0.07)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            gap: '12px',
-                            flexWrap: 'wrap',
-                        }}
-                    >
-                        <div>
-                            <p style={{ margin: 0, fontSize: '14px', fontWeight: '700', color: '#1a1a2e' }}>
-                                Socratic AI Tutor
-                            </p>
-                            <p style={{ margin: 0, fontSize: '12px', color: '#888', marginTop: '2px' }}>
-                                Ask questions — the AI will guide your thinking, not give answers
-                            </p>
+                            {mcqQuestions.length === 0 ? (
+                                <div
+                                    style={{
+                                        background: 'white',
+                                        borderRadius: '14px',
+                                        padding: '24px',
+                                        color: '#94a3b8',
+                                        textAlign: 'center',
+                                        boxShadow: '0 1px 4px rgba(0,0,0,0.07)',
+                                    }}
+                                >
+                                    No MCQ questions are configured for this assignment yet.
+                                </div>
+                            ) : (
+                                mcqQuestions.map((question, index) => (
+                                    <McqQuestionCard
+                                        key={question.id}
+                                        index={index}
+                                        question={question}
+                                        selectedOption={mcqAnswers[question.id]}
+                                        onSelect={handleSelectMcqAnswer}
+                                        onAskAi={handleAskAiAboutQuestion}
+                                    />
+                                ))
+                            )}
                         </div>
-                        <HintLevelBar current={hintLevel} max={3} />
-                    </div>
-
-                    {/* Chat messages */}
-                    <div
-                        style={{
-                            flex: 1,
-                            background: 'white',
-                            borderRadius: '12px',
-                            boxShadow: '0 1px 4px rgba(0,0,0,0.07)',
-                            padding: '20px',
-                            minHeight: '340px',
-                            maxHeight: '480px',
-                            overflowY: 'auto',
-                            display: 'flex',
-                            flexDirection: 'column',
-                        }}
-                    >
-                        {messages.length === 0 && (
-                            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#ccc', textAlign: 'center', gap: '10px' }}>
-                                <div style={{ fontSize: '36px' }}>💬</div>
-                                <p style={{ margin: 0, fontSize: '14px', fontWeight: '500', color: '#bbb' }}>Start by describing what you're working on</p>
-                                <p style={{ margin: 0, fontSize: '12px', color: '#ddd' }}>
-                                    Share your attempt or question — show your thinking first
+                    ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                            <div style={{ background: 'white', borderRadius: '12px', padding: '16px', boxShadow: '0 1px 4px rgba(0,0,0,0.07)' }}>
+                                <p style={{ margin: '0 0 12px', fontSize: '11px', fontWeight: '700', color: '#888', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                                    Hint Progress
                                 </p>
+                                {[1, 2, 3].map((lvl) => {
+                                    const cfg = HINT_LEVELS[lvl]
+                                    const active = lvl === hintLevel
+                                    const past = lvl < hintLevel
+                                    return (
+                                        <div
+                                            key={lvl}
+                                            style={{
+                                                display: 'flex',
+                                                alignItems: 'flex-start',
+                                                gap: '10px',
+                                                padding: '10px',
+                                                borderRadius: '8px',
+                                                marginBottom: '6px',
+                                                background: active ? cfg.bg : 'transparent',
+                                                border: `1.5px solid ${active ? cfg.border : 'transparent'}`,
+                                            }}
+                                        >
+                                            <div
+                                                style={{
+                                                    width: '22px',
+                                                    height: '22px',
+                                                    borderRadius: '50%',
+                                                    background: past ? '#22c55e' : active ? cfg.dot : '#e5e7eb',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center',
+                                                    color: 'white',
+                                                    fontSize: '10px',
+                                                    fontWeight: '700',
+                                                    flexShrink: 0,
+                                                }}
+                                            >
+                                                {past ? 'OK' : lvl}
+                                            </div>
+                                            <div>
+                                                <p style={{ margin: 0, fontSize: '12px', fontWeight: active ? '700' : '500', color: active ? cfg.color : past ? '#15803d' : '#888' }}>
+                                                    {cfg.label}
+                                                </p>
+                                                <p style={{ margin: '2px 0 0', fontSize: '10px', color: '#94a3b8', lineHeight: 1.4 }}>
+                                                    {cfg.description}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    )
+                                })}
                             </div>
-                        )}
 
-                        {messages.map((msg) => (
-                            <ChatBubble key={msg.id} msg={msg} />
-                        ))}
-
-                        {maxHintReached && (
-                            <MaxHintMessage onContact={() => window.open('mailto:teacher@school.edu')} />
-                        )}
-
-                        <div ref={messagesEndRef} />
-                    </div>
-
-                    {/* Input area */}
-                    <div
-                        style={{
-                            background: 'white',
-                            borderRadius: '12px',
-                            boxShadow: '0 1px 4px rgba(0,0,0,0.07)',
-                            padding: '12px',
-                            display: 'flex',
-                            gap: '10px',
-                            alignItems: 'flex-end',
-                        }}
-                    >
-                        <div style={{ flex: 1 }}>
-                            <textarea
-                                ref={textareaRef}
-                                value={input}
-                                onChange={handleInputChange}
-                                onKeyDown={handleKeyDown}
-                                placeholder={
-                                    maxHintReached
-                                        ? 'Maximum hint level reached. Consult your teacher or course materials.'
-                                        : 'Describe what you\'re working on or where you\'re stuck…'
-                                }
-                                disabled={maxHintReached || loading}
-                                rows={3}
-                                style={{
-                                    width: '100%',
-                                    resize: 'none',
-                                    border: '1.5px solid #e5e7eb',
-                                    borderRadius: '8px',
-                                    padding: '10px 12px',
-                                    fontSize: '14px',
-                                    lineHeight: '1.5',
-                                    color: '#1a1a2e',
-                                    fontFamily: 'inherit',
-                                    boxSizing: 'border-box',
-                                    background: maxHintReached ? '#f9f9f9' : 'white',
-                                    transition: 'border-color .2s',
-                                }}
-                            />
-                            <p style={{ margin: '4px 0 0 2px', fontSize: '11px', color: '#bbb' }}>
-                                Press Enter to send · Shift+Enter for new line · Hint interactions are logged
-                            </p>
-                        </div>
-                        <button
-                            onClick={handleSend}
-                            disabled={loading || maxHintReached || !input.trim()}
-                            style={{
-                                padding: '12px 20px',
-                                background: loading || maxHintReached || !input.trim() ? '#e5e7eb' : 'linear-gradient(135deg, #1a5fa8, #2563eb)',
-                                color: loading || maxHintReached || !input.trim() ? '#aaa' : 'white',
-                                border: 'none',
-                                borderRadius: '8px',
-                                fontSize: '14px',
-                                fontWeight: '600',
-                                cursor: loading || maxHintReached || !input.trim() ? 'not-allowed' : 'pointer',
-                                transition: 'all .2s',
-                                flexShrink: 0,
-                                minWidth: '80px',
-                            }}
-                        >
-                            {loading ? '…' : 'Ask →'}
-                        </button>
-                    </div>
-
-                    {error && (
-                        <div style={{ padding: '10px 14px', background: '#fef2f2', border: '1px solid #fecaca', color: '#b91c1c', borderRadius: '8px', fontSize: '13px' }}>
-                            {error}
+                            <div style={{ background: 'white', borderRadius: '12px', padding: '16px', boxShadow: '0 1px 4px rgba(0,0,0,0.07)' }}>
+                                <p style={{ margin: '0 0 8px', fontSize: '11px', fontWeight: '700', color: '#888', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                                    How it works
+                                </p>
+                                {[
+                                    'Type your question or show your thinking',
+                                    'Hints guide you and do not give direct answers',
+                                    'Hint level advances as you engage more',
+                                    'After L3, continue on your own or consult your teacher',
+                                ].map((tip, index) => (
+                                    <div key={tip} style={{ display: 'flex', gap: '8px', marginBottom: '7px', alignItems: 'flex-start' }}>
+                                        <span style={{ color: '#1a5fa8', fontWeight: '700', fontSize: '12px', flexShrink: 0 }}>{index + 1}.</span>
+                                        <span style={{ fontSize: '12px', color: '#666', lineHeight: 1.45 }}>{tip}</span>
+                                    </div>
+                                ))}
+                            </div>
                         </div>
                     )}
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', minWidth: 0 }}>
+                        <div
+                            style={{
+                                background: 'white',
+                                borderRadius: '12px',
+                                padding: '12px 16px',
+                                boxShadow: '0 1px 4px rgba(0,0,0,0.07)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                gap: '12px',
+                                flexWrap: 'wrap',
+                            }}
+                        >
+                            <div>
+                                <p style={{ margin: 0, fontSize: '14px', fontWeight: '700', color: '#1a1a2e' }}>
+                                    Socratic AI Tutor
+                                </p>
+                                <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#888' }}>
+                                    Ask for hints, elimination strategies, or reasoning help without asking for the final answer
+                                </p>
+                            </div>
+                            <HintLevelBar current={hintLevel} max={3} />
+                        </div>
+
+                        <div style={{ padding: '10px 12px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '8px' }}>
+                            <p style={{ margin: 0, fontSize: '11px', color: '#92400e', lineHeight: 1.4 }}>
+                                Your hint interactions are logged and visible to your teacher.
+                            </p>
+                        </div>
+
+                        <div
+                            style={{
+                                background: 'white',
+                                borderRadius: '12px',
+                                boxShadow: '0 1px 4px rgba(0,0,0,0.07)',
+                                padding: '20px',
+                                minHeight: '360px',
+                                maxHeight: isMcqAssignment ? '620px' : '480px',
+                                overflowY: 'auto',
+                                display: 'flex',
+                                flexDirection: 'column',
+                            }}
+                        >
+                            {messages.length === 0 && (
+                                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#cbd5e1', textAlign: 'center', gap: '10px' }}>
+                                    <div style={{ fontSize: '36px' }}>Tutor chat</div>
+                                    <p style={{ margin: 0, fontSize: '14px', fontWeight: '500', color: '#94a3b8' }}>
+                                        {isMcqAssignment ? 'Select an answer, then ask the tutor about your reasoning.' : 'Start by describing what you are working on.'}
+                                    </p>
+                                    <p style={{ margin: 0, fontSize: '12px', color: '#cbd5e1' }}>
+                                        Show your thinking and ask for guidance instead of direct answers.
+                                    </p>
+                                </div>
+                            )}
+
+                            {messages.map((msg) => (
+                                <ChatBubble key={msg.id} msg={msg} />
+                            ))}
+
+                            {maxHintReached && <MaxHintMessage onContact={() => window.open('mailto:teacher@school.edu')} />}
+
+                            <div ref={messagesEndRef} />
+                        </div>
+
+                        <div
+                            style={{
+                                background: 'white',
+                                borderRadius: '12px',
+                                boxShadow: '0 1px 4px rgba(0,0,0,0.07)',
+                                padding: '12px',
+                                display: 'flex',
+                                gap: '10px',
+                                alignItems: 'flex-end',
+                            }}
+                        >
+                            <div style={{ flex: 1 }}>
+                                <textarea
+                                    ref={textareaRef}
+                                    value={input}
+                                    onChange={handleInputChange}
+                                    onKeyDown={handleKeyDown}
+                                    placeholder={
+                                        maxHintReached
+                                            ? 'Maximum hint level reached. Continue on your own or consult your teacher.'
+                                            : isMcqAssignment
+                                                ? 'Ask about a question, an option you selected, or why another option seems weaker...'
+                                                : 'Describe what you are working on or where you are stuck...'
+                                    }
+                                    disabled={maxHintReached || loading}
+                                    rows={3}
+                                    style={{
+                                        width: '100%',
+                                        resize: 'none',
+                                        border: '1.5px solid #e5e7eb',
+                                        borderRadius: '8px',
+                                        padding: '10px 12px',
+                                        fontSize: '14px',
+                                        lineHeight: '1.5',
+                                        color: '#1a1a2e',
+                                        fontFamily: 'inherit',
+                                        boxSizing: 'border-box',
+                                        background: maxHintReached ? '#f9f9f9' : 'white',
+                                    }}
+                                />
+                                <p style={{ margin: '4px 0 0 2px', fontSize: '11px', color: '#94a3b8' }}>
+                                    Press Enter to send, Shift+Enter for a new line.
+                                </p>
+                            </div>
+                            <button
+                                onClick={handleSend}
+                                disabled={loading || maxHintReached || !input.trim()}
+                                style={{
+                                    padding: '12px 20px',
+                                    background: loading || maxHintReached || !input.trim() ? '#e5e7eb' : 'linear-gradient(135deg, #1a5fa8, #2563eb)',
+                                    color: loading || maxHintReached || !input.trim() ? '#aaa' : 'white',
+                                    border: 'none',
+                                    borderRadius: '8px',
+                                    fontSize: '14px',
+                                    fontWeight: '600',
+                                    cursor: loading || maxHintReached || !input.trim() ? 'not-allowed' : 'pointer',
+                                    flexShrink: 0,
+                                    minWidth: '80px',
+                                }}
+                            >
+                                {loading ? '...' : 'Ask'}
+                            </button>
+                        </div>
+
+                        {error && (
+                            <div style={{ padding: '10px 14px', background: '#fef2f2', border: '1px solid #fecaca', color: '#b91c1c', borderRadius: '8px', fontSize: '13px' }}>
+                                {error}
+                            </div>
+                        )}
+                    </div>
                 </div>
             </div>
         </div>

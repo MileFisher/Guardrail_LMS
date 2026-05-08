@@ -82,6 +82,7 @@ async function createAssignment(req, res, next) {
       assignmentType: req.body.assignmentType,
       title: req.body.title,
       prompt: req.body.prompt,
+      mcqQuestions: req.body.mcqQuestions,
       maxHintLevel: req.body.maxHintLevel,
       minWordsForHint: req.body.minWordsForHint,
       zscoreThreshold: req.body.zscoreThreshold,

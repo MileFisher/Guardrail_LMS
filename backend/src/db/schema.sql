@@ -52,9 +52,10 @@ CREATE TABLE IF NOT EXISTS assignments (
   id TEXT PRIMARY KEY,
   course_id TEXT NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
   created_by TEXT NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
-  assignment_type TEXT NOT NULL DEFAULT 'essay' CHECK (assignment_type IN ('essay', 'qa')),
+  assignment_type TEXT NOT NULL DEFAULT 'essay' CHECK (assignment_type IN ('essay', 'qa', 'mcq')),
   title TEXT NOT NULL,
   prompt TEXT NOT NULL,
+  mcq_questions JSONB NOT NULL DEFAULT '[]'::jsonb,
   max_hint_level INTEGER NOT NULL DEFAULT 3 CHECK (max_hint_level BETWEEN 1 AND 3),
   min_words_for_hint INTEGER NOT NULL DEFAULT 50 CHECK (min_words_for_hint >= 0),
   zscore_threshold NUMERIC(6, 2),
@@ -66,9 +67,16 @@ CREATE TABLE IF NOT EXISTS assignments (
 ALTER TABLE assignments
   ADD COLUMN IF NOT EXISTS assignment_type TEXT;
 
+ALTER TABLE assignments
+  ADD COLUMN IF NOT EXISTS mcq_questions JSONB NOT NULL DEFAULT '[]'::jsonb;
+
 UPDATE assignments
 SET assignment_type = 'essay'
 WHERE assignment_type IS NULL;
+
+UPDATE assignments
+SET mcq_questions = '[]'::jsonb
+WHERE mcq_questions IS NULL;
 
 ALTER TABLE assignments
   ALTER COLUMN assignment_type SET DEFAULT 'essay';
@@ -76,18 +84,18 @@ ALTER TABLE assignments
 ALTER TABLE assignments
   ALTER COLUMN assignment_type SET NOT NULL;
 
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1
-    FROM pg_constraint
-    WHERE conname = 'assignments_assignment_type_check'
-  ) THEN
-    ALTER TABLE assignments
-      ADD CONSTRAINT assignments_assignment_type_check
-      CHECK (assignment_type IN ('essay', 'qa'));
-  END IF;
-END $$;
+ALTER TABLE assignments
+  ALTER COLUMN mcq_questions SET DEFAULT '[]'::jsonb;
+
+ALTER TABLE assignments
+  ALTER COLUMN mcq_questions SET NOT NULL;
+
+ALTER TABLE assignments
+  DROP CONSTRAINT IF EXISTS assignments_assignment_type_check;
+
+ALTER TABLE assignments
+  ADD CONSTRAINT assignments_assignment_type_check
+  CHECK (assignment_type IN ('essay', 'qa', 'mcq'));
 
 CREATE TABLE IF NOT EXISTS writing_sessions (
   id TEXT PRIMARY KEY,
@@ -216,9 +224,21 @@ CREATE TABLE IF NOT EXISTS hint_interactions (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS mcq_responses (
+  id TEXT PRIMARY KEY,
+  study_session_id TEXT NOT NULL REFERENCES study_sessions(id) ON DELETE CASCADE,
+  assignment_id TEXT NOT NULL REFERENCES assignments(id) ON DELETE CASCADE,
+  student_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  answers_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (assignment_id, student_id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_consents_user_id ON consents(user_id);
 CREATE INDEX IF NOT EXISTS idx_writing_sessions_student_id ON writing_sessions(student_id);
 CREATE INDEX IF NOT EXISTS idx_submissions_student_assignment ON submissions(student_id, assignment_id);
 CREATE INDEX IF NOT EXISTS idx_anomaly_flags_student_id ON anomaly_flags(student_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_anomaly_flags_session_id_unique ON anomaly_flags(session_id);
 CREATE INDEX IF NOT EXISTS idx_hint_interactions_session_id ON hint_interactions(study_session_id);
+CREATE INDEX IF NOT EXISTS idx_mcq_responses_assignment_student ON mcq_responses(assignment_id, student_id);

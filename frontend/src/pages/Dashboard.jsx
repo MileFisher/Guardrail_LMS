@@ -16,6 +16,26 @@ const hintLevelColors = {
     L3: { bg: '#fff7ed', color: '#c2410c', border: '#fed7aa', label: 'L3 Guided' },
 }
 
+const ASSIGNMENT_TYPE = {
+    ESSAY: 'essay',
+    QA: 'qa',
+    MCQ: 'mcq',
+}
+
+function isEssayAssignmentType(type) {
+    return (type || ASSIGNMENT_TYPE.ESSAY) === ASSIGNMENT_TYPE.ESSAY
+}
+
+function isTutorAssignmentType(type) {
+    return [ASSIGNMENT_TYPE.QA, ASSIGNMENT_TYPE.MCQ].includes(type)
+}
+
+function getAssignmentTypeLabel(type) {
+    if (type === ASSIGNMENT_TYPE.MCQ) return 'MCQ tutor assignment'
+    if (type === ASSIGNMENT_TYPE.QA) return 'Q&A tutor assignment'
+    return 'Essay assignment'
+}
+
 function formatDeviceType(deviceType) {
     if (!deviceType) return 'Unknown device'
     return deviceType.charAt(0).toUpperCase() + deviceType.slice(1)
@@ -117,13 +137,13 @@ function CalibrationBadge({ baseline }) {
 }
 
 function AssignmentRow({ assignment, onOpen }) {
-    const isEssayAssignment = assignment.assignmentType !== 'qa'
+    const isEssayAssignment = isEssayAssignmentType(assignment.assignmentType)
     const isSubmitted = isEssayAssignment && assignment.status === 'submitted'
     const isPast = assignment.due ? new Date(assignment.due) < new Date() : false
     const dueLabel = assignment.due
         ? `Due ${new Date(assignment.due).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`
         : 'No due date'
-    const assignmentTypeLabel = isEssayAssignment ? 'Essay assignment' : 'Q&A tutor assignment'
+    const assignmentTypeLabel = getAssignmentTypeLabel(assignment.assignmentType)
 
     return (
         <div
@@ -175,11 +195,11 @@ function AssignmentRow({ assignment, onOpen }) {
 
 function CourseCard({ course, onOpenAssignment }) {
     const [expanded, setExpanded] = useState(true)
-    const essayAssignments = course.assignments.filter((a) => a.assignmentType !== 'qa')
+    const essayAssignments = course.assignments.filter((a) => isEssayAssignmentType(a.assignmentType))
     const submitted = essayAssignments.filter((a) => a.status === 'submitted').length
     const subtitle = essayAssignments.length
         ? `${submitted}/${essayAssignments.length} essays submitted`
-        : 'Q&A tutor assignments only'
+        : 'Tutor assignments only'
 
     return (
         <div
@@ -393,10 +413,10 @@ function Dashboard() {
                             const assignments = (assignmentRes.assignments || []).map((assignment) => ({
                                 id: assignment.id,
                                 courseId: course.id,
-                                assignmentType: assignment.assignmentType || 'essay',
+                                assignmentType: assignment.assignmentType || ASSIGNMENT_TYPE.ESSAY,
                                 title: assignment.title,
                                 due: assignment.dueAt || assignment.due || null,
-                                status: (assignment.assignmentType || 'essay') === 'essay' && assignment.submittedAt ? 'submitted' : 'open',
+                                status: isEssayAssignmentType(assignment.assignmentType) && assignment.submittedAt ? 'submitted' : 'open',
                             }))
                             return { courseId: course.id, assignments }
                         } catch {
@@ -467,7 +487,7 @@ function Dashboard() {
 
     const handleOpenAssignment = (assignment) => {
         setSelectedAssignment(assignment)
-        if (assignment.assignmentType === 'qa') {
+        if (isTutorAssignmentType(assignment.assignmentType)) {
             navigate(`/study?assignmentId=${assignment.id}&courseId=${assignment.courseId || ''}`)
             return
         }

@@ -13,6 +13,7 @@ function mapAssignment(row) {
     assignmentType: row.assignment_type || "essay",
     title: row.title,
     prompt: row.prompt,
+    mcqQuestions: Array.isArray(row.mcq_questions) ? row.mcq_questions : [],
     maxHintLevel: row.max_hint_level,
     minWordsForHint: row.min_words_for_hint,
     zscoreThreshold: row.zscore_threshold === null ? null : Number(row.zscore_threshold),
@@ -20,6 +21,8 @@ function mapAssignment(row) {
     dueAt: row.due_at,
     createdAt: row.created_at,
     submittedAt: row.submitted_at || null,
+    studentMcqResponse: row.student_mcq_response && typeof row.student_mcq_response === "object" ? row.student_mcq_response : {},
+    studentMcqUpdatedAt: row.student_mcq_updated_at || null,
     submissionCount: row.submission_count === undefined ? undefined : Number(row.submission_count || 0),
     totalStudents: row.total_students === undefined ? undefined : Number(row.total_students || 0)
   };
@@ -31,6 +34,7 @@ async function createAssignment({
   assignmentType = "essay",
   title,
   prompt,
+  mcqQuestions = [],
   maxHintLevel = 3,
   minWordsForHint = 50,
   zscoreThreshold = null,
@@ -45,6 +49,7 @@ async function createAssignment({
        assignment_type,
        title,
        prompt,
+       mcq_questions,
        max_hint_level,
        min_words_for_hint,
        zscore_threshold,
@@ -52,9 +57,9 @@ async function createAssignment({
        due_at,
        created_at
      )
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+     VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10, $11, $12, $13)
      RETURNING
-       id, course_id, created_by, assignment_type, title, prompt, max_hint_level, min_words_for_hint,
+       id, course_id, created_by, assignment_type, title, prompt, mcq_questions, max_hint_level, min_words_for_hint,
        zscore_threshold, paste_threshold_chars, due_at, created_at`,
     [
       uuidv4(),
@@ -63,6 +68,7 @@ async function createAssignment({
       assignmentType,
       title,
       prompt,
+      JSON.stringify(mcqQuestions || []),
       maxHintLevel,
       minWordsForHint,
       zscoreThreshold,
@@ -85,12 +91,15 @@ async function listAssignmentsByCourse(courseId, options = {}) {
        a.assignment_type,
        a.title,
        a.prompt,
+       a.mcq_questions,
        a.max_hint_level,
        a.min_words_for_hint,
        a.zscore_threshold,
        a.paste_threshold_chars,
        a.due_at,
        a.created_at,
+       mcq_response.answers_json AS student_mcq_response,
+       mcq_response.updated_at AS student_mcq_updated_at,
        own_submission.submitted_at,
        COALESCE(submission_counts.submission_count, 0) AS submission_count,
        COALESCE(enrollment_counts.total_students, 0) AS total_students
@@ -103,6 +112,14 @@ async function listAssignmentsByCourse(courseId, options = {}) {
        ORDER BY s.submitted_at DESC
        LIMIT 1
      ) own_submission ON TRUE
+     LEFT JOIN LATERAL (
+       SELECT mr.answers_json, mr.updated_at
+       FROM mcq_responses mr
+       WHERE mr.assignment_id = a.id
+         AND $2::text IS NOT NULL
+         AND mr.student_id = $2
+       LIMIT 1
+     ) mcq_response ON TRUE
      LEFT JOIN LATERAL (
        SELECT COUNT(*)::int AS submission_count
        FROM submissions s
@@ -124,7 +141,7 @@ async function listAssignmentsByCourse(courseId, options = {}) {
 async function findAssignmentById(id) {
   const result = await query(
     `SELECT
-       id, course_id, created_by, assignment_type, title, prompt, max_hint_level, min_words_for_hint,
+       id, course_id, created_by, assignment_type, title, prompt, mcq_questions, max_hint_level, min_words_for_hint,
        zscore_threshold, paste_threshold_chars, due_at, created_at
      FROM assignments
      WHERE id = $1

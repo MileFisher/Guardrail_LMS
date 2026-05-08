@@ -98,43 +98,38 @@ async function ensureAssignment({
   assignmentType = "essay",
   title,
   prompt,
+  mcqQuestions = [],
   maxHintLevel = 3,
   minWordsForHint = 0,
   zscoreThreshold = null,
   pasteThresholdChars = null,
   dueAt = null,
-  legacyTitles = []
 }) {
   let existing = await query(
     `SELECT id FROM assignments WHERE course_id = $1 AND title = $2 LIMIT 1`,
     [courseId, title]
   );
 
-  if (!existing.rows[0] && legacyTitles.length > 0) {
-    existing = await query(
-      `SELECT id FROM assignments WHERE course_id = $1 AND title = ANY($2::text[]) LIMIT 1`,
-      [courseId, legacyTitles]
-    );
-  }
-
   if (existing.rows[0]) {
     const result = await query(
       `UPDATE assignments
        SET title = $2,
            prompt = $3,
-           created_by = $4,
-           assignment_type = $5,
-           max_hint_level = $6,
-           min_words_for_hint = $7,
-           zscore_threshold = $8,
-           paste_threshold_chars = $9,
-           due_at = $10
+           mcq_questions = $4::jsonb,
+           created_by = $5,
+           assignment_type = $6,
+           max_hint_level = $7,
+           min_words_for_hint = $8,
+           zscore_threshold = $9,
+           paste_threshold_chars = $10,
+           due_at = $11
        WHERE id = $1
        RETURNING id, title, assignment_type`,
       [
         existing.rows[0].id,
         title,
         prompt,
+        JSON.stringify(mcqQuestions || []),
         createdBy,
         assignmentType,
         maxHintLevel,
@@ -149,11 +144,11 @@ async function ensureAssignment({
   }
 
   const result = await query(
-    `INSERT INTO assignments (
-       id, course_id, created_by, assignment_type, title, prompt, max_hint_level, min_words_for_hint,
+     `INSERT INTO assignments (
+       id, course_id, created_by, assignment_type, title, prompt, mcq_questions, max_hint_level, min_words_for_hint,
        zscore_threshold, paste_threshold_chars, due_at, created_at
      )
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+     VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10, $11, $12, $13)
      RETURNING id, title, assignment_type`,
     [
       uuidv4(),
@@ -162,6 +157,7 @@ async function ensureAssignment({
       assignmentType,
       title,
       prompt,
+      JSON.stringify(mcqQuestions || []),
       maxHintLevel,
       minWordsForHint,
       zscoreThreshold,
@@ -205,9 +201,8 @@ async function runSeed() {
 
   const course = await upsertCourse({
     teacherId: seededUsers.teacher.id,
-    title: "Dental Medicine Foundations",
-    code: "DENT201",
-    legacyCodes: ["AW101"]
+    title: "English Language Skills",
+    code: "ENG201"
   });
 
   await ensureEnrollment(course.id, seededUsers["student1@guardrail.local"].id);
@@ -218,23 +213,63 @@ async function runSeed() {
       courseId: course.id,
       createdBy: seededUsers.teacher.id,
       assignmentType: "essay",
-      title: "Essay: Infection Control Reflection",
+      title: "Essay: Writing a Formal Email",
       prompt:
-        "Write a reflective essay explaining how sterilization, surface disinfection, PPE selection, and hand hygiene reduce cross-contamination risk in a dental clinic. Use a realistic chairside scenario and justify each control choice.",
+        "Write a formal email to your course lecturer requesting a deadline extension. Explain your situation clearly, use an appropriate tone, and organize the email with a subject line, greeting, body, and closing.",
       maxHintLevel: 3,
       minWordsForHint: 0,
       zscoreThreshold: 3.0,
       pasteThresholdChars: 350,
-      dueAt: daysFromNow(7),
-      legacyTitles: ["Reflective Essay 1"]
+      dueAt: daysFromNow(7)
     }),
     ensureAssignment({
       courseId: course.id,
       createdBy: seededUsers.teacher.id,
-      assignmentType: "qa",
-      title: "Q&A: Tooth Eruption and FDI Numbering",
+      assignmentType: "mcq",
+      title: "MCQ: Reading Comprehension and Vocabulary in Context",
       prompt:
-        "Use the Socratic tutor to reason through the eruption sequence of the permanent dentition and how to identify teeth using the FDI numbering system. Ask for guided hints rather than direct answers.",
+        "Answer the reading and vocabulary questions in the panel. Use the AI tutor only when you need guided hints, elimination strategies, or help understanding why an option may be weaker than another.",
+      mcqQuestions: [
+        {
+          id: "reading-main-idea",
+          prompt:
+            "Read the sentence: 'Although Lina had planned to spend Saturday resting, she volunteered at the library because the community reading program was short-staffed.' What is the main idea?",
+          options: [
+            { id: "A", text: "Lina dislikes community programs." },
+            { id: "B", text: "Lina changed her plan in order to help others." },
+            { id: "C", text: "The library was closed on Saturday." },
+            { id: "D", text: "Lina was forced to work for the library." }
+          ],
+          correctOption: "B",
+          explanation: "The sentence contrasts Lina's original plan with her voluntary decision to help the reading program."
+        },
+        {
+          id: "vocab-context",
+          prompt:
+            "In the sentence 'The teacher's feedback was concise but helpful,' what does the word 'concise' most nearly mean?",
+          options: [
+            { id: "A", text: "Too confusing to understand" },
+            { id: "B", text: "Short and clear" },
+            { id: "C", text: "Strongly critical" },
+            { id: "D", text: "Written in a formal style" }
+          ],
+          correctOption: "B",
+          explanation: "Concise means brief while still including the necessary information."
+        },
+        {
+          id: "author-purpose",
+          prompt:
+            "A paragraph explains the benefits of reading every day and ends by encouraging students to carry a book with them. Which option best shows the writer's purpose?",
+          options: [
+            { id: "A", text: "To entertain readers with a fictional story" },
+            { id: "B", text: "To persuade students to build a reading habit" },
+            { id: "C", text: "To compare two different authors" },
+            { id: "D", text: "To describe how a library building was designed" }
+          ],
+          correctOption: "B",
+          explanation: "The paragraph presents benefits and then encourages action, which signals persuasion."
+        }
+      ],
       maxHintLevel: 3,
       minWordsForHint: 0,
       zscoreThreshold: null,
@@ -244,10 +279,48 @@ async function runSeed() {
     ensureAssignment({
       courseId: course.id,
       createdBy: seededUsers.teacher.id,
-      assignmentType: "qa",
-      title: "Q&A: Local Anaesthesia Safety Checks",
+      assignmentType: "mcq",
+      title: "MCQ: Grammar, Tenses, and Sentence Correction",
       prompt:
-        "Use guided questioning to work through landmarks, aspiration, contraindications, and post-injection monitoring for common dental local anaesthesia procedures.",
+        "Answer the grammar questions in the panel. Use the AI tutor for Socratic hints, grammar rules, and elimination help without asking for the final answer directly.",
+      mcqQuestions: [
+        {
+          id: "verb-tense",
+          prompt: "Choose the sentence with the correct verb tense.",
+          options: [
+            { id: "A", text: "She go to class early yesterday." },
+            { id: "B", text: "She gone to class early yesterday." },
+            { id: "C", text: "She went to class early yesterday." },
+            { id: "D", text: "She going to class early yesterday." }
+          ],
+          correctOption: "C",
+          explanation: "The time marker 'yesterday' requires the simple past tense: 'went'."
+        },
+        {
+          id: "subject-verb",
+          prompt: "Choose the sentence with correct subject-verb agreement.",
+          options: [
+            { id: "A", text: "The list of books are on the desk." },
+            { id: "B", text: "The list of books is on the desk." },
+            { id: "C", text: "The list of books were on the desk." },
+            { id: "D", text: "The list of books be on the desk." }
+          ],
+          correctOption: "B",
+          explanation: "The singular subject is 'list', so the verb should be 'is'."
+        },
+        {
+          id: "sentence-correction",
+          prompt: "Which sentence is written correctly?",
+          options: [
+            { id: "A", text: "If I will see her, I tell her the news." },
+            { id: "B", text: "If I see her, I will tell her the news." },
+            { id: "C", text: "If I saw her, I will tell her the news." },
+            { id: "D", text: "If I seen her, I would tell her the news." }
+          ],
+          correctOption: "B",
+          explanation: "A first conditional sentence uses present simple in the if-clause and 'will' in the main clause."
+        }
+      ],
       maxHintLevel: 3,
       minWordsForHint: 0,
       zscoreThreshold: null,
@@ -258,9 +331,9 @@ async function runSeed() {
       courseId: course.id,
       createdBy: seededUsers.teacher.id,
       assignmentType: "essay",
-      title: "Essay: Managing Dental Anxiety During Extraction Counseling",
+      title: "Essay: Comparing Formal and Informal English",
       prompt:
-        "Write a short essay describing how you would communicate risks, aftercare, and anxiety-management strategies to a nervous patient before a simple extraction.",
+        "Write a short comparison essay explaining the difference between formal and informal English. Discuss tone, vocabulary, sentence structure, and when each style is appropriate, using clear examples.",
       maxHintLevel: 3,
       minWordsForHint: 0,
       zscoreThreshold: 2.8,
