@@ -12,13 +12,15 @@ function mapMcqResponse(row) {
     assignmentId: row.assignment_id,
     studentId: row.student_id,
     answers: row.answers_json && typeof row.answers_json === "object" ? row.answers_json : {},
+    submittedAt: row.submitted_at || null,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
 }
 
-async function upsertMcqResponse({ studySessionId, assignmentId, studentId, answers }) {
+async function upsertMcqResponse({ studySessionId, assignmentId, studentId, answers, submittedAt = undefined }) {
   const now = new Date().toISOString();
+  const submittedTimestamp = submittedAt === undefined ? null : submittedAt;
   const result = await query(
     `INSERT INTO mcq_responses (
        id,
@@ -26,13 +28,15 @@ async function upsertMcqResponse({ studySessionId, assignmentId, studentId, answ
        assignment_id,
        student_id,
        answers_json,
+       submitted_at,
        created_at,
        updated_at
      )
-     VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7)
+     VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8)
      ON CONFLICT (assignment_id, student_id) DO UPDATE
      SET study_session_id = EXCLUDED.study_session_id,
          answers_json = EXCLUDED.answers_json,
+         submitted_at = COALESCE(EXCLUDED.submitted_at, mcq_responses.submitted_at),
          updated_at = EXCLUDED.updated_at
      RETURNING
        id,
@@ -40,9 +44,10 @@ async function upsertMcqResponse({ studySessionId, assignmentId, studentId, answ
        assignment_id,
        student_id,
        answers_json,
+       submitted_at,
        created_at,
        updated_at`,
-    [uuidv4(), studySessionId, assignmentId, studentId, JSON.stringify(answers || {}), now, now]
+    [uuidv4(), studySessionId, assignmentId, studentId, JSON.stringify(answers || {}), submittedTimestamp, now, now]
   );
 
   return mapMcqResponse(result.rows[0]);

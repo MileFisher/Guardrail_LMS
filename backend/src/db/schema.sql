@@ -64,6 +64,18 @@ CREATE TABLE IF NOT EXISTS assignments (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS course_lectures (
+  id TEXT PRIMARY KEY,
+  course_id TEXT NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+  created_by TEXT NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+  title TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  media_type TEXT NOT NULL DEFAULT 'link' CHECK (media_type IN ('link', 'image', 'video')),
+  media_url TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 ALTER TABLE assignments
   ADD COLUMN IF NOT EXISTS assignment_type TEXT;
 
@@ -96,6 +108,25 @@ ALTER TABLE assignments
 ALTER TABLE assignments
   ADD CONSTRAINT assignments_assignment_type_check
   CHECK (assignment_type IN ('essay', 'qa', 'mcq'));
+
+ALTER TABLE course_lectures
+  ADD COLUMN IF NOT EXISTS description TEXT NOT NULL DEFAULT '';
+
+ALTER TABLE course_lectures
+  ADD COLUMN IF NOT EXISTS media_type TEXT NOT NULL DEFAULT 'link';
+
+ALTER TABLE course_lectures
+  ADD COLUMN IF NOT EXISTS media_url TEXT;
+
+ALTER TABLE course_lectures
+  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+ALTER TABLE course_lectures
+  DROP CONSTRAINT IF EXISTS course_lectures_media_type_check;
+
+ALTER TABLE course_lectures
+  ADD CONSTRAINT course_lectures_media_type_check
+  CHECK (media_type IN ('link', 'image', 'video'));
 
 CREATE TABLE IF NOT EXISTS writing_sessions (
   id TEXT PRIMARY KEY,
@@ -230,12 +261,17 @@ CREATE TABLE IF NOT EXISTS mcq_responses (
   assignment_id TEXT NOT NULL REFERENCES assignments(id) ON DELETE CASCADE,
   student_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   answers_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+  submitted_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE (assignment_id, student_id)
 );
 
+ALTER TABLE mcq_responses
+  ADD COLUMN IF NOT EXISTS submitted_at TIMESTAMPTZ;
+
 CREATE INDEX IF NOT EXISTS idx_consents_user_id ON consents(user_id);
+CREATE INDEX IF NOT EXISTS idx_course_lectures_course_id ON course_lectures(course_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_writing_sessions_student_id ON writing_sessions(student_id);
 CREATE INDEX IF NOT EXISTS idx_submissions_student_assignment ON submissions(student_id, assignment_id);
 CREATE INDEX IF NOT EXISTS idx_anomaly_flags_student_id ON anomaly_flags(student_id);

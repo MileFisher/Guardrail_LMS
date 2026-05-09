@@ -263,7 +263,7 @@ function MaxHintMessage({ onContact }) {
     )
 }
 
-function McqQuestionCard({ index, question, selectedOption, onSelect, onAskAi }) {
+function McqQuestionCard({ index, question, selectedOption, onSelect, onAskAi, disabled }) {
     return (
         <div
             style={{
@@ -323,6 +323,7 @@ function McqQuestionCard({ index, question, selectedOption, onSelect, onAskAi })
                                 type="radio"
                                 name={question.id}
                                 checked={checked}
+                                disabled={disabled}
                                 onChange={() => onSelect(question.id, option.id)}
                                 style={{ marginTop: '3px' }}
                             />
@@ -360,6 +361,7 @@ function StudySession() {
     const [mcqAnswers, setMcqAnswers] = useState({})
     const [mcqSaveState, setMcqSaveState] = useState('idle')
     const [mcqSavedAt, setMcqSavedAt] = useState('')
+    const [mcqSubmittedAt, setMcqSubmittedAt] = useState('')
     const messagesEndRef = useRef(null)
     const textareaRef = useRef(null)
     const saveRequestRef = useRef(0)
@@ -383,6 +385,7 @@ function StudySession() {
                             setAssignment(found)
                             setMcqAnswers(found.studentMcqResponse || {})
                             setMcqSavedAt(found.studentMcqUpdatedAt || '')
+                            setMcqSubmittedAt(found.studentMcqSubmittedAt || '')
                         }
                     }
                 }
@@ -508,6 +511,7 @@ function StudySession() {
 
             setMcqAnswers(result.response?.answers || nextAnswers)
             setMcqSavedAt(result.response?.updatedAt || '')
+            setMcqSubmittedAt(result.response?.submittedAt || '')
             setMcqSaveState('saved')
         } catch (err) {
             if (saveRequestRef.current !== requestId) return
@@ -517,6 +521,8 @@ function StudySession() {
     }
 
     function handleSelectMcqAnswer(questionId, optionId) {
+        if (mcqSubmittedAt) return
+
         const nextAnswers = {
             ...mcqAnswers,
             [questionId]: optionId,
@@ -528,9 +534,38 @@ function StudySession() {
     }
 
     function handleClearMcqAnswers() {
+        if (mcqSubmittedAt) return
         setMcqAnswers({})
         setError('')
         persistMcqAnswers({})
+    }
+
+    async function handleSubmitMcq() {
+        if (!assignmentId || !courseId || !isMcqAssignment || mcqSubmittedAt) return
+        if (answeredCount !== mcqQuestions.length) {
+            setError('Answer all MCQ questions before submitting.')
+            return
+        }
+
+        setMcqSaveState('saving')
+        setError('')
+
+        try {
+            const result = await apiPost('/api/tutor/mcq-response', {
+                assignmentId,
+                courseId,
+                answers: mcqAnswers,
+                submit: true,
+            })
+
+            setMcqAnswers(result.response?.answers || mcqAnswers)
+            setMcqSavedAt(result.response?.updatedAt || '')
+            setMcqSubmittedAt(result.response?.submittedAt || '')
+            setMcqSaveState('submitted')
+        } catch (err) {
+            setMcqSaveState('error')
+            setError(err.message || 'Failed to submit MCQ answers.')
+        }
     }
 
     function handleAskAiAboutQuestion(question, selectedOption) {
@@ -551,6 +586,7 @@ function StudySession() {
     }
 
     const answeredCount = mcqQuestions.filter((question) => mcqAnswers[question.id]).length
+    const isMcqSubmitted = Boolean(mcqSubmittedAt)
 
     return (
         <div
@@ -697,34 +733,56 @@ function StudySession() {
                                             {answeredCount}/{mcqQuestions.length} answered
                                         </p>
                                         <p style={{ margin: 0, fontSize: '12px', color: mcqSaveState === 'error' ? '#b91c1c' : '#888' }}>
-                                            {mcqSaveState === 'saving'
+                                            {isMcqSubmitted
+                                                ? `Submitted ${formatSavedTime(mcqSubmittedAt)}`
+                                                : mcqSaveState === 'saving'
                                                 ? 'Saving answers...'
                                                 : mcqSaveState === 'saved' && mcqSavedAt
                                                     ? `Saved ${formatSavedTime(mcqSavedAt)}`
                                                     : mcqSaveState === 'error'
                                                         ? 'Save failed'
-                                                        : 'Selections save to your workspace'}
+                                                        : 'Selections save to your draft workspace'}
                                         </p>
                                     </div>
                                 </div>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', alignItems: 'center', marginTop: '14px', flexWrap: 'wrap' }}>
                                     <HintLevelBar current={hintLevel} max={3} />
-                                    <button
-                                        type="button"
-                                        onClick={handleClearMcqAnswers}
-                                        style={{
-                                            padding: '8px 12px',
-                                            borderRadius: '8px',
-                                            border: '1px solid #fecaca',
-                                            background: '#fff1f2',
-                                            color: '#be123c',
-                                            fontSize: '12px',
-                                            fontWeight: '600',
-                                            cursor: 'pointer',
-                                        }}
-                                    >
-                                        Clear selections
-                                    </button>
+                                    <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                                        <button
+                                            type="button"
+                                            onClick={handleClearMcqAnswers}
+                                            disabled={isMcqSubmitted}
+                                            style={{
+                                                padding: '8px 12px',
+                                                borderRadius: '8px',
+                                                border: '1px solid #fecaca',
+                                                background: isMcqSubmitted ? '#f8fafc' : '#fff1f2',
+                                                color: isMcqSubmitted ? '#94a3b8' : '#be123c',
+                                                fontSize: '12px',
+                                                fontWeight: '600',
+                                                cursor: isMcqSubmitted ? 'not-allowed' : 'pointer',
+                                            }}
+                                        >
+                                            Clear selections
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={handleSubmitMcq}
+                                            disabled={isMcqSubmitted || mcqSaveState === 'saving' || answeredCount !== mcqQuestions.length}
+                                            style={{
+                                                padding: '8px 14px',
+                                                borderRadius: '8px',
+                                                border: 'none',
+                                                background: isMcqSubmitted ? '#dcfce7' : answeredCount === mcqQuestions.length ? '#15803d' : '#cbd5e1',
+                                                color: isMcqSubmitted ? '#166534' : answeredCount === mcqQuestions.length ? 'white' : '#64748b',
+                                                fontSize: '12px',
+                                                fontWeight: '700',
+                                                cursor: isMcqSubmitted || answeredCount !== mcqQuestions.length ? 'not-allowed' : 'pointer',
+                                            }}
+                                        >
+                                            {isMcqSubmitted ? 'Submitted' : mcqSaveState === 'saving' ? 'Submitting...' : 'Submit answers'}
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
 
@@ -744,12 +802,13 @@ function StudySession() {
                             ) : (
                                 mcqQuestions.map((question, index) => (
                                     <McqQuestionCard
-                                        key={question.id}
-                                        index={index}
+                                key={question.id}
+                                index={index}
                                         question={question}
                                         selectedOption={mcqAnswers[question.id]}
                                         onSelect={handleSelectMcqAnswer}
                                         onAskAi={handleAskAiAboutQuestion}
+                                        disabled={isMcqSubmitted}
                                     />
                                 ))
                             )}

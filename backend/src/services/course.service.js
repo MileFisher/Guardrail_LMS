@@ -1,7 +1,6 @@
 const {
   createCourse,
   createEnrollments,
-  findCourseById,
   findEnrollment,
   getCourseWithTeacherById,
   listAllCourses,
@@ -10,6 +9,14 @@ const {
   listEnrollmentsByCourse
 } = require("../data/course.store");
 const { createAssignment, findAssignmentById, listAssignmentsByCourse } = require("../data/assignment.store");
+const {
+  createLecture,
+  deleteLecture,
+  findLectureById,
+  listLecturesByCourse,
+  updateLecture
+} = require("../data/lecture.store");
+const { listCourseSubmissions } = require("../data/submission.store");
 const { findUserById } = require("../data/user.store");
 
 function validateCourseInput({ title, code }) {
@@ -28,11 +35,31 @@ function validateAssignmentInput({ title, prompt }) {
   }
 }
 
+function validateLectureInput({ title }, { requireTitle = true } = {}) {
+  if (requireTitle && (!title || !String(title).trim())) {
+    const error = new Error("title is required.");
+    error.statusCode = 400;
+    throw error;
+  }
+}
+
 function normalizeAssignmentType(assignmentType) {
   const normalized = String(assignmentType || "essay").trim().toLowerCase();
 
   if (!["essay", "qa", "mcq"].includes(normalized)) {
     const error = new Error("assignmentType must be essay, qa, or mcq.");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  return normalized;
+}
+
+function normalizeLectureMediaType(mediaType) {
+  const normalized = String(mediaType || "link").trim().toLowerCase();
+
+  if (!["link", "image", "video"].includes(normalized)) {
+    const error = new Error("mediaType must be link, image, or video.");
     error.statusCode = 400;
     throw error;
   }
@@ -139,6 +166,20 @@ async function ensureCourseAccess(courseId, user) {
   throw error;
 }
 
+function ensureCourseManager(course, actor, actionLabel) {
+  if (actor.role === "student") {
+    const error = new Error(`Students cannot ${actionLabel}.`);
+    error.statusCode = 403;
+    throw error;
+  }
+
+  if (actor.role === "teacher" && course.teacherId !== actor.id) {
+    const error = new Error(`Only the course teacher can ${actionLabel}.`);
+    error.statusCode = 403;
+    throw error;
+  }
+}
+
 async function createCourseForTeacher({ teacherId, title, code, isActive }) {
   validateCourseInput({ title, code });
   await ensureTeacherUser(teacherId);
@@ -165,12 +206,7 @@ async function enrollStudentsInCourse({ courseId, studentIds, actor }) {
   }
 
   const course = await ensureCourseAccess(courseId, actor);
-
-  if (actor.role === "teacher" && course.teacherId !== actor.id) {
-    const error = new Error("Only the course teacher can enroll students.");
-    error.statusCode = 403;
-    throw error;
-  }
+  ensureCourseManager(course, actor, "enroll students");
 
   const uniqueStudentIds = [...new Set(studentIds)];
   await ensureStudentUsers(uniqueStudentIds);
@@ -184,18 +220,7 @@ async function listCourseEnrollments({ courseId, actor }) {
 
 async function createCourseAssignment({ courseId, actor, assignmentType, title, prompt, mcqQuestions, maxHintLevel, minWordsForHint, zscoreThreshold, pasteThresholdChars, dueAt }) {
   const course = await ensureCourseAccess(courseId, actor);
-
-  if (actor.role === "student") {
-    const error = new Error("Students cannot create assignments.");
-    error.statusCode = 403;
-    throw error;
-  }
-
-  if (actor.role === "teacher" && course.teacherId !== actor.id) {
-    const error = new Error("Only the course teacher can create assignments.");
-    error.statusCode = 403;
-    throw error;
-  }
+  ensureCourseManager(course, actor, "create assignments");
 
   validateAssignmentInput({ title, prompt });
   const normalizedAssignmentType = normalizeAssignmentType(assignmentType);
@@ -224,6 +249,82 @@ async function listCourseAssignments({ courseId, actor }) {
   return assignments.map((assignment) => sanitizeAssignmentForActor(assignment, actor));
 }
 
+async function listCourseSubmissionsForTeacher({ courseId, actor }) {
+  const course = await ensureCourseAccess(courseId, actor);
+  ensureCourseManager(course, actor, "view submissions");
+  return listCourseSubmissions(courseId);
+}
+
+async function listCourseLectures({ courseId, actor }) {
+  await ensureCourseAccess(courseId, actor);
+  return listLecturesByCourse(courseId);
+}
+
+async function createCourseLecture({ courseId, actor, title, description, mediaType, mediaUrl }) {
+  const course = await ensureCourseAccess(courseId, actor);
+  ensureCourseManager(course, actor, "manage lectures");
+  validateLectureInput({ title });
+
+  return createLecture({
+    courseId,
+    createdBy: actor.id,
+    title: title.trim(),
+    description: String(description || "").trim(),
+    mediaType: normalizeLectureMediaType(mediaType),
+    mediaUrl: String(mediaUrl || "").trim()
+  });
+}
+
+async function updateCourseLecture({ courseId, lectureId, actor, title, description, mediaType, mediaUrl }) {
+  const course = await ensureCourseAccess(courseId, actor);
+  ensureCourseManager(course, actor, "manage lectures");
+
+  const lecture = await findLectureById(lectureId);
+  if (!lecture || lecture.courseId !== courseId) {
+    const error = new Error("Lecture not found.");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  validateLectureInput({ title }, { requireTitle: false });
+
+  const changes = {};
+  if (title !== undefined) {
+    changes.title = String(title).trim();
+  }
+  if (description !== undefined) {
+    changes.description = String(description || "").trim();
+  }
+  if (mediaType !== undefined) {
+    changes.mediaType = normalizeLectureMediaType(mediaType);
+  }
+  if (mediaUrl !== undefined) {
+    changes.mediaUrl = String(mediaUrl || "").trim();
+  }
+
+  if (Object.prototype.hasOwnProperty.call(changes, "title") && !changes.title) {
+    const error = new Error("title is required.");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  return updateLecture(lectureId, changes);
+}
+
+async function deleteCourseLectureById({ courseId, lectureId, actor }) {
+  const course = await ensureCourseAccess(courseId, actor);
+  ensureCourseManager(course, actor, "manage lectures");
+
+  const lecture = await findLectureById(lectureId);
+  if (!lecture || lecture.courseId !== courseId) {
+    const error = new Error("Lecture not found.");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  return deleteLecture(lectureId);
+}
+
 async function ensureAssignmentAccess(assignmentId, actor) {
   const assignment = await findAssignmentById(assignmentId);
 
@@ -239,11 +340,16 @@ async function ensureAssignmentAccess(assignmentId, actor) {
 
 module.exports = {
   createCourseAssignment,
+  createCourseLecture,
   createCourseForTeacher,
+  deleteCourseLectureById,
   ensureAssignmentAccess,
   ensureCourseAccess,
   enrollStudentsInCourse,
   listCourseAssignments,
   listCourseEnrollments,
-  listCoursesForUser
+  listCourseLectures,
+  listCourseSubmissionsForTeacher,
+  listCoursesForUser,
+  updateCourseLecture
 };

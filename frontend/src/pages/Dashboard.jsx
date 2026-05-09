@@ -41,6 +41,83 @@ function formatDeviceType(deviceType) {
     return deviceType.charAt(0).toUpperCase() + deviceType.slice(1)
 }
 
+function getYoutubeEmbedUrl(url) {
+    try {
+        const parsed = new URL(url)
+        if (parsed.hostname.includes('youtu.be')) {
+            const videoId = parsed.pathname.replace('/', '')
+            return videoId ? `https://www.youtube.com/embed/${videoId}` : ''
+        }
+
+        if (parsed.hostname.includes('youtube.com')) {
+            if (parsed.pathname.startsWith('/embed/')) return parsed.toString()
+            const videoId = parsed.searchParams.get('v')
+            return videoId ? `https://www.youtube.com/embed/${videoId}` : ''
+        }
+    } catch {
+        return ''
+    }
+
+    return ''
+}
+
+function isDirectVideoUrl(url) {
+    return /\.(mp4|webm|ogg)(\?.*)?$/i.test(url || '')
+}
+
+function renderLectureMedia(lecture) {
+    if (!lecture?.mediaUrl) return null
+
+    if (lecture.mediaType === 'image') {
+        return (
+            <img
+                src={lecture.mediaUrl}
+                alt={lecture.title}
+                style={{ width: '100%', maxHeight: '220px', objectFit: 'cover', borderRadius: '10px', marginTop: '10px' }}
+            />
+        )
+    }
+
+    if (lecture.mediaType === 'video') {
+        const embedUrl = getYoutubeEmbedUrl(lecture.mediaUrl)
+
+        if (embedUrl) {
+            return (
+                <div style={{ marginTop: '10px', borderRadius: '10px', overflow: 'hidden', border: '1px solid #dbe7f3' }}>
+                    <iframe
+                        src={embedUrl}
+                        title={lecture.title}
+                        style={{ width: '100%', height: '220px', border: 'none', display: 'block' }}
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                        allowFullScreen
+                    />
+                </div>
+            )
+        }
+
+        if (isDirectVideoUrl(lecture.mediaUrl)) {
+            return (
+                <video
+                    controls
+                    src={lecture.mediaUrl}
+                    style={{ width: '100%', maxHeight: '220px', borderRadius: '10px', marginTop: '10px', background: '#0f172a' }}
+                />
+            )
+        }
+    }
+
+    return (
+        <a
+            href={lecture.mediaUrl}
+            target="_blank"
+            rel="noreferrer"
+            style={{ display: 'inline-flex', marginTop: '10px', color: '#1a5fa8', fontSize: '12px', fontWeight: '600', textDecoration: 'none' }}
+        >
+            Open resource
+        </a>
+    )
+}
+
 function WpmTrendChart({ sessions }) {
     if (!sessions.length) {
         return (
@@ -138,7 +215,7 @@ function CalibrationBadge({ baseline }) {
 
 function AssignmentRow({ assignment, onOpen }) {
     const isEssayAssignment = isEssayAssignmentType(assignment.assignmentType)
-    const isSubmitted = isEssayAssignment && assignment.status === 'submitted'
+    const isSubmitted = assignment.status === 'submitted'
     const isPast = assignment.due ? new Date(assignment.due) < new Date() : false
     const dueLabel = assignment.due
         ? `Due ${new Date(assignment.due).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`
@@ -174,13 +251,13 @@ function AssignmentRow({ assignment, onOpen }) {
 
             <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
                 <button
-                    onClick={() => (!isSubmitted || !isEssayAssignment) && onOpen(assignment)}
+                    onClick={() => !isSubmitted && onOpen(assignment)}
                     style={{
                         padding: '5px 16px',
                         borderRadius: '6px',
                         fontSize: '13px',
                         fontWeight: '500',
-                        cursor: isSubmitted && isEssayAssignment ? 'default' : 'pointer',
+                        cursor: isSubmitted ? 'default' : 'pointer',
                         border: 'none',
                         background: isSubmitted ? '#f0fdf4' : isEssayAssignment ? '#1a5fa8' : '#d97706',
                         color: isSubmitted ? '#15803d' : 'white',
@@ -189,6 +266,30 @@ function AssignmentRow({ assignment, onOpen }) {
                     {isSubmitted ? 'Submitted' : isEssayAssignment ? 'Open Essay' : 'Open Tutor'}
                 </button>
             </div>
+        </div>
+    )
+}
+
+function LectureCard({ lecture }) {
+    return (
+        <div
+            style={{
+                background: '#f8fafc',
+                border: '1px solid #dbe7f3',
+                borderRadius: '12px',
+                padding: '14px',
+            }}
+        >
+            <p style={{ margin: '0 0 4px', fontSize: '14px', fontWeight: '600', color: '#1a1a2e' }}>{lecture.title}</p>
+            <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>
+                Updated {new Date(lecture.updatedAt || lecture.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+            </p>
+            {lecture.description && (
+                <p style={{ margin: '10px 0 0', fontSize: '13px', color: '#475569', lineHeight: 1.6 }}>
+                    {lecture.description}
+                </p>
+            )}
+            {renderLectureMedia(lecture)}
         </div>
     )
 }
@@ -257,14 +358,36 @@ function CourseCard({ course, onOpenAssignment }) {
                 <span style={{ color: '#aaa', fontSize: '16px' }}>{expanded ? '▼' : '▶'}</span>
             </div>
 
-            {expanded &&
-                (course.assignments.length ? (
-                    course.assignments.map((assignment) => (
-                        <AssignmentRow key={assignment.id} assignment={assignment} onOpen={onOpenAssignment} />
-                    ))
-                ) : (
-                    <p style={{ padding: '1rem 1.25rem', margin: 0, color: '#999', fontSize: '13px' }}>No assignments yet.</p>
-                ))}
+            {expanded && (
+                <>
+                    <div style={{ padding: '14px 20px', borderBottom: '1px solid #f1f5f9' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', marginBottom: course.lectures?.length ? '12px' : 0 }}>
+                            <p style={{ margin: 0, fontSize: '12px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                                Lecture Materials
+                            </p>
+                            <span style={{ fontSize: '12px', color: '#94a3b8' }}>{course.lectures?.length || 0} item(s)</span>
+                        </div>
+
+                        {course.lectures?.length ? (
+                            <div style={{ display: 'grid', gap: '12px' }}>
+                                {course.lectures.map((lecture) => (
+                                    <LectureCard key={lecture.id} lecture={lecture} />
+                                ))}
+                            </div>
+                        ) : (
+                            <p style={{ margin: 0, color: '#94a3b8', fontSize: '13px' }}>No lecture materials published yet.</p>
+                        )}
+                    </div>
+
+                    {course.assignments.length ? (
+                        course.assignments.map((assignment) => (
+                            <AssignmentRow key={assignment.id} assignment={assignment} onOpen={onOpenAssignment} />
+                        ))
+                    ) : (
+                        <p style={{ padding: '1rem 1.25rem', margin: 0, color: '#999', fontSize: '13px' }}>No assignments yet.</p>
+                    )}
+                </>
+            )}
         </div>
     )
 }
@@ -404,23 +527,31 @@ function Dashboard() {
                     teacher: course.teacherName || course.teacher || '',
                     assignments: [],
                     baselines: [],
+                    lectures: [],
                 }))
 
-                const assignmentsPerCourse = await Promise.all(
+                const courseContent = await Promise.all(
                     baseCourses.map(async (course) => {
                         try {
-                            const assignmentRes = await apiGet(`/api/courses/${course.id}/assignments`)
+                            const [assignmentRes, lectureRes] = await Promise.all([
+                                apiGet(`/api/courses/${course.id}/assignments`),
+                                apiGet(`/api/courses/${course.id}/lectures`).catch(() => ({ lectures: [] })),
+                            ])
                             const assignments = (assignmentRes.assignments || []).map((assignment) => ({
                                 id: assignment.id,
                                 courseId: course.id,
                                 assignmentType: assignment.assignmentType || ASSIGNMENT_TYPE.ESSAY,
                                 title: assignment.title,
                                 due: assignment.dueAt || assignment.due || null,
-                                status: isEssayAssignmentType(assignment.assignmentType) && assignment.submittedAt ? 'submitted' : 'open',
+                                status:
+                                    (isEssayAssignmentType(assignment.assignmentType) && assignment.submittedAt) ||
+                                    (assignment.assignmentType === ASSIGNMENT_TYPE.MCQ && assignment.studentMcqSubmittedAt)
+                                        ? 'submitted'
+                                        : 'open',
                             }))
-                            return { courseId: course.id, assignments }
+                            return { courseId: course.id, assignments, lectures: lectureRes.lectures || [] }
                         } catch {
-                            return { courseId: course.id, assignments: [] }
+                            return { courseId: course.id, assignments: [], lectures: [] }
                         }
                     })
                 )
@@ -433,7 +564,8 @@ function Dashboard() {
                     createdAt: flag.flaggedAt || flag.createdAt,
                 }))
 
-                const assignmentsByCourse = new Map(assignmentsPerCourse.map((item) => [item.courseId, item.assignments]))
+                const assignmentsByCourse = new Map(courseContent.map((item) => [item.courseId, item.assignments]))
+                const lecturesByCourse = new Map(courseContent.map((item) => [item.courseId, item.lectures]))
                 const baselinesByCourse = new Map()
 
                 baselines.forEach((baseline) => {
@@ -446,6 +578,7 @@ function Dashboard() {
                     ...course,
                     assignments: assignmentsByCourse.get(course.id) || [],
                     baselines: baselinesByCourse.get(course.id) || [],
+                    lectures: lecturesByCourse.get(course.id) || [],
                 }))
 
                 const safeWpm = sessions

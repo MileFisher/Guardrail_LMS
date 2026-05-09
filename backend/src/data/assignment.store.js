@@ -23,6 +23,7 @@ function mapAssignment(row) {
     submittedAt: row.submitted_at || null,
     studentMcqResponse: row.student_mcq_response && typeof row.student_mcq_response === "object" ? row.student_mcq_response : {},
     studentMcqUpdatedAt: row.student_mcq_updated_at || null,
+    studentMcqSubmittedAt: row.student_mcq_submitted_at || null,
     submissionCount: row.submission_count === undefined ? undefined : Number(row.submission_count || 0),
     totalStudents: row.total_students === undefined ? undefined : Number(row.total_students || 0)
   };
@@ -100,8 +101,12 @@ async function listAssignmentsByCourse(courseId, options = {}) {
        a.created_at,
        mcq_response.answers_json AS student_mcq_response,
        mcq_response.updated_at AS student_mcq_updated_at,
+       mcq_response.submitted_at AS student_mcq_submitted_at,
        own_submission.submitted_at,
-       COALESCE(submission_counts.submission_count, 0) AS submission_count,
+       CASE
+         WHEN a.assignment_type = 'mcq' THEN COALESCE(mcq_counts.submission_count, 0)
+         ELSE COALESCE(submission_counts.submission_count, 0)
+       END AS submission_count,
        COALESCE(enrollment_counts.total_students, 0) AS total_students
      FROM assignments a
      LEFT JOIN LATERAL (
@@ -113,7 +118,7 @@ async function listAssignmentsByCourse(courseId, options = {}) {
        LIMIT 1
      ) own_submission ON TRUE
      LEFT JOIN LATERAL (
-       SELECT mr.answers_json, mr.updated_at
+       SELECT mr.answers_json, mr.updated_at, mr.submitted_at
        FROM mcq_responses mr
        WHERE mr.assignment_id = a.id
          AND $2::text IS NOT NULL
@@ -125,6 +130,12 @@ async function listAssignmentsByCourse(courseId, options = {}) {
        FROM submissions s
        WHERE s.assignment_id = a.id
      ) submission_counts ON TRUE
+     LEFT JOIN LATERAL (
+       SELECT COUNT(*)::int AS submission_count
+       FROM mcq_responses mr
+       WHERE mr.assignment_id = a.id
+         AND mr.submitted_at IS NOT NULL
+     ) mcq_counts ON TRUE
      LEFT JOIN LATERAL (
        SELECT COUNT(*)::int AS total_students
        FROM enrollments e

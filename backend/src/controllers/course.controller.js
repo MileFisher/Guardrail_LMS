@@ -1,11 +1,16 @@
 const {
   createCourseAssignment,
+  createCourseLecture,
   createCourseForTeacher,
+  deleteCourseLectureById,
   ensureCourseAccess,
   enrollStudentsInCourse,
   listCourseAssignments,
+  listCourseLectures,
   listCourseEnrollments,
-  listCoursesForUser
+  listCourseSubmissionsForTeacher,
+  listCoursesForUser,
+  updateCourseLecture
 } = require("../services/course.service");
 
 async function listCourses(req, res, next) {
@@ -112,12 +117,101 @@ async function getAssignments(req, res, next) {
   }
 }
 
+async function getSubmissions(req, res, next) {
+  try {
+    const submissions = await listCourseSubmissionsForTeacher({
+      courseId: req.params.courseId,
+      actor: req.user
+    });
+
+    return res.status(200).json({ submissions });
+  } catch (error) {
+    return next(error);
+  }
+}
+
+async function createLecture(req, res, next) {
+  try {
+    const lecture = await createCourseLecture({
+      courseId: req.params.courseId,
+      actor: req.user,
+      title: req.body.title,
+      description: req.body.description,
+      mediaType: req.body.mediaType,
+      mediaUrl: req.body.mediaUrl
+    });
+
+    return res.status(201).json({
+      message: "Lecture created successfully.",
+      lecture
+    });
+  } catch (error) {
+    return next(error);
+  }
+}
+
+async function getLectures(req, res, next) {
+  try {
+    const lectures = await listCourseLectures({
+      courseId: req.params.courseId,
+      actor: req.user
+    });
+
+    return res.status(200).json({ lectures });
+  } catch (error) {
+    return next(error);
+  }
+}
+
+async function editLecture(req, res, next) {
+  try {
+    const lecture = await updateCourseLecture({
+      courseId: req.params.courseId,
+      lectureId: req.params.lectureId,
+      actor: req.user,
+      title: req.body.title,
+      description: req.body.description,
+      mediaType: req.body.mediaType,
+      mediaUrl: req.body.mediaUrl
+    });
+
+    return res.status(200).json({
+      message: "Lecture updated successfully.",
+      lecture
+    });
+  } catch (error) {
+    return next(error);
+  }
+}
+
+async function removeLecture(req, res, next) {
+  try {
+    const lecture = await deleteCourseLectureById({
+      courseId: req.params.courseId,
+      lectureId: req.params.lectureId,
+      actor: req.user
+    });
+
+    return res.status(200).json({
+      message: "Lecture deleted successfully.",
+      lecture
+    });
+  } catch (error) {
+    return next(error);
+  }
+}
+
 module.exports = {
   createAssignment,
   createCourse,
+  createLecture,
+  editLecture,
   enrollStudents,
   getAssignments,
   getCourse,
   getEnrollments,
-  listCourses
+  getLectures,
+  getSubmissions,
+  listCourses,
+  removeLecture
 };

@@ -51,7 +51,8 @@ async function saveMcq(req, res, next) {
         user: req.user,
         assignmentId: req.body.assignmentId,
         courseId: req.body.courseId,
-        answers: req.body.answers
+        answers: req.body.answers,
+        submit: Boolean(req.body.submit)
       })
     });
   } catch (error) {

@@ -212,7 +212,7 @@ async function markHintLimitReached({ user, assignmentId, courseId }) {
   return { closedSessions };
 }
 
-async function saveMcqAnswers({ user, assignmentId, courseId, answers }) {
+async function saveMcqAnswers({ user, assignmentId, courseId, answers, submit = false }) {
   const context = await ensureTutorStudentAccess({ user, assignmentId, courseId, requireMcq: true });
   const normalizedAnswers = normalizeMcqAnswers(context.assignment, answers);
 
@@ -226,7 +226,8 @@ async function saveMcqAnswers({ user, assignmentId, courseId, answers }) {
     studySessionId: session.id,
     assignmentId: context.assignment.id,
     studentId: user.id,
-    answers: normalizedAnswers
+    answers: normalizedAnswers,
+    submittedAt: submit ? new Date().toISOString() : undefined
   });
 
   return response;
