@@ -49,3 +49,20 @@ npm run dev
 - First run: `npm run setup:dev`
 - Daily run: `npm run dev:with-db`
 - If DB is already running: `npm run dev`
+
+## Production Deployment
+
+This repo is prepared for a split deployment:
+
+- Frontend: Cloudflare Pages
+- Backend: Render Web Service
+- Database: Neon Postgres
+
+Important production notes:
+
+- The backend is now API-only in production and no longer serves the frontend app.
+- Set `VITE_API_BASE_URL=https://api.yourdomain.com` in the frontend host.
+- Set `FRONTEND_ORIGIN` and `CORS_ALLOWED_ORIGINS` on the backend so CORS only allows your real frontend domain.
+- The frontend SPA fallback file is included for Cloudflare Pages routing.
+
+See [DEPLOYMENT.md](./DEPLOYMENT.md) for the full deployment checklist, env vars, and DNS setup.

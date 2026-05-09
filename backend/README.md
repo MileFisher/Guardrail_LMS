@@ -30,17 +30,21 @@ npm run dev
 
 Copy `.env.example` to `.env` and set:
 
+- `NODE_ENV`
 - `PORT`
 - `JWT_SECRET`
 - `JWT_EXPIRES_IN`
 - `BCRYPT_ROUNDS`
 - `DATABASE_URL`
+- `DB_SSL` if using hosted Postgres such as Neon
+- `FRONTEND_ORIGIN`
+- optional `CORS_ALLOWED_ORIGINS`
 - `OPENAI_API_KEY` for OpenAI-backed Socratic tutor requests
 - or `OPENROUTER_API_KEY` plus `OPENROUTER_MODEL` for OpenRouter-backed tutor requests
 
 ## Routes
 
-- `GET /` static frontend control surface served from the top-level `frontend/` folder
+- `GET /` API status payload
 - `GET /health`
 - `POST /api/auth/register`
 - `POST /api/auth/login`
@@ -87,7 +91,7 @@ Copy `.env.example` to `.env` and set:
 
 On startup, the backend creates the core Guardrail LMS tables from `src/db/schema.sql` if they do not already exist.
 
-The backend serves a browser UI from `/`, but the UI files now live in the top-level `frontend/` folder instead of inside `backend/`.
+The backend is API-only. In production, the frontend should be deployed separately as a static app and configured to call this API.
 
 The implemented schema follows `DB_plan.md` and includes:
 
@@ -133,3 +137,9 @@ This seeds:
 ```bash
 npm run dev
 ```
+
+## Deployment Notes
+
+- Render can use the repo-level [`render.yaml`](../render.yaml) blueprint.
+- In production, set `FRONTEND_ORIGIN` and `CORS_ALLOWED_ORIGINS` to your real frontend domain so browser requests are restricted by CORS.
+- For Neon, prefer `DATABASE_URL` and set `DB_SSL=true`.

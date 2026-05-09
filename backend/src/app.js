@@ -1,5 +1,4 @@
 const express = require("express");
-const path = require("path");
 const cors = require("cors");
 const helmet = require("helmet");
 const adminRoutes = require("./routes/admin.routes");
@@ -11,12 +10,44 @@ const flagRoutes = require("./routes/flag.routes");
 const submissionRoutes = require("./routes/submission.routes");
 const telemetryRoutes = require("./routes/telemetry.routes");
 const tutorRoutes = require("./routes/tutor.routes");
+const env = require("./config/env");
 
 const app = express();
-const frontendDir = path.join(__dirname, "..", "..", "frontend");
+
+const defaultDevOrigins = [
+  "http://localhost:5173",
+  "http://127.0.0.1:5173",
+  "http://localhost:4173",
+  "http://127.0.0.1:4173"
+];
+
+const allowedOrigins = env.corsAllowedOrigins.length > 0
+  ? env.corsAllowedOrigins
+  : env.nodeEnv === "production"
+    ? []
+    : defaultDevOrigins;
+
+const corsOptions = {
+  origin(origin, callback) {
+    if (!origin) {
+      callback(null, true);
+      return;
+    }
+
+    if (allowedOrigins.length === 0 || allowedOrigins.includes(origin)) {
+      callback(null, true);
+      return;
+    }
+
+    const error = new Error("Origin not allowed by CORS.");
+    error.statusCode = 403;
+    callback(error);
+  }
+};
 
 app.use(helmet());
-app.use(cors());
+app.use(cors(corsOptions));
+app.options("*", cors(corsOptions));
 app.use(express.json({
   verify: (req, res, buffer) => {
     if (buffer?.length) {
@@ -24,6 +55,14 @@ app.use(express.json({
     }
   }
 }));
+
+app.get("/", (req, res) => {
+  res.status(200).json({
+    name: "Guardrail LMS API",
+    status: "ok",
+    health: "/health"
+  });
+});
 
 app.get("/health", (req, res) => {
   res.status(200).json({ status: "ok" });
@@ -38,7 +77,6 @@ app.use("/api/flags", flagRoutes);
 app.use("/api/submissions", submissionRoutes);
 app.use("/api/telemetry", telemetryRoutes);
 app.use("/api/tutor", tutorRoutes);
-app.use(express.static(frontendDir));
 
 app.use((req, res) => {
   res.status(404).json({ message: "Route not found." });

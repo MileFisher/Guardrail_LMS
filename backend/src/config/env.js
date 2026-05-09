@@ -8,7 +8,16 @@ const resolvedBaseUrl =
   process.env.OPENAI_BASE_URL ||
   (resolvedApiKey.startsWith("sk-or-") ? "https://openrouter.ai/api/v1" : "https://api.openai.com/v1");
 
+const configuredCorsOrigins = [
+  process.env.FRONTEND_ORIGIN || "",
+  ...(process.env.CORS_ALLOWED_ORIGINS || "")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean)
+];
+
 const env = {
+  nodeEnv: process.env.NODE_ENV || "development",
   port: Number(process.env.PORT || 4000),
   jwtSecret: process.env.JWT_SECRET || "dev-only-secret-change-me",
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || "1d",
@@ -25,7 +34,8 @@ const env = {
   openaiModel: process.env.OPENROUTER_MODEL || process.env.OPENAI_MODEL || "chat-latest",
   openaiTimeoutMs: Number(process.env.OPENROUTER_TIMEOUT_MS || process.env.OPENAI_TIMEOUT_MS || 30000),
   openRouterSiteUrl: process.env.OPENROUTER_SITE_URL || "",
-  openRouterAppName: process.env.OPENROUTER_APP_NAME || process.env.OPENROUTER_TITLE || ""
+  openRouterAppName: process.env.OPENROUTER_APP_NAME || process.env.OPENROUTER_TITLE || "",
+  corsAllowedOrigins: [...new Set(configuredCorsOrigins)]
 };
 
 module.exports = env;
