@@ -561,7 +561,6 @@ function Dashboard() {
 
     const [showConsent, setShowConsent] = useState(false)
     const [showDeleteModal, setShowDeleteModal] = useState(false)
-    const [selectedAssignment, setSelectedAssignment] = useState(null)
     const [courses, setCourses] = useState([])
     const [wpmSessions, setWpmSessions] = useState([])
     const [hintHistory, setHintHistory] = useState([])
@@ -697,7 +696,6 @@ function Dashboard() {
     const wpmDelta = currentWpm - firstWpm
 
     const handleOpenAssignment = (assignment) => {
-        setSelectedAssignment(assignment)
         if (isTutorAssignmentType(assignment.assignmentType)) {
             navigate(`/study?assignmentId=${assignment.id}&courseId=${assignment.courseId || ''}`)
             return

@@ -739,7 +739,7 @@ function LectureCard({ lecture, onEdit, onDelete }) {
     )
 }
 
-function SubmissionList({ assignment }) {
+function SubmissionList({ assignment, navigate, courseId }) {
     if (assignment.assignmentType === ASSIGNMENT_TYPE.QA) {
         return (
             <div style={{ marginTop: '14px', padding: '12px', borderRadius: '10px', background: '#fff7ed', border: '1px solid #fed7aa', color: '#9a3412', fontSize: '12px' }}>
@@ -799,11 +799,31 @@ function SubmissionList({ assignment }) {
                                 )}
                             </div>
                         ) : (
-                            <div style={{ marginTop: '10px', background: 'white', borderRadius: '8px', padding: '10px', border: '1px solid #e2e8f0' }}>
-                                <p style={{ margin: 0, fontSize: '12px', color: '#475569', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
-                                    {clipText(response.contentText, 320)}
-                                </p>
-                            </div>
+                            <>
+                                <div style={{ marginTop: '10px', background: 'white', borderRadius: '8px', padding: '10px', border: '1px solid #e2e8f0' }}>
+                                    <p style={{ margin: 0, fontSize: '12px', color: '#475569', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
+                                        {clipText(response.contentText, 320)}
+                                    </p>
+                                </div>
+                                <div style={{ marginTop: '10px', display: 'flex', justifyContent: 'flex-end' }}>
+                                    <button
+                                        type="button"
+                                        onClick={() => navigate(`/teacher/submissions/${response.id}?courseId=${courseId}`)}
+                                        style={{
+                                            padding: '7px 12px',
+                                            borderRadius: '8px',
+                                            border: 'none',
+                                            background: '#1a5fa8',
+                                            color: 'white',
+                                            fontSize: '12px',
+                                            fontWeight: '600',
+                                            cursor: 'pointer',
+                                        }}
+                                    >
+                                        View submission
+                                    </button>
+                                </div>
+                            </>
                         )}
                     </div>
                 )
@@ -1057,7 +1077,7 @@ function CoursePanel({ course, navigate, onCreateAssignment, onAddStudent, onMan
                                         </div>
                                     </div>
 
-                                    <SubmissionList assignment={assignment} />
+                                    <SubmissionList assignment={assignment} navigate={navigate} courseId={course.id} />
                                 </div>
                             )
                         })

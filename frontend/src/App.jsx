@@ -10,6 +10,7 @@ import AppealForm from './pages/AppealForm'
 import StudySession from './pages/StudySession'
 import HintLog from './pages/HintLog'
 import AdminPanel from './pages/AdminPanel'
+import TeacherSubmissionReview from './pages/TeacherSubmissionReview'
 
 function App() {
     return (
@@ -59,6 +60,11 @@ function App() {
                 } />
 
                 {/* Admin — Sprint 4 */}
+                <Route path="/teacher/submissions/:submissionId" element={
+                    <PrivateRoute allowedRoles={['teacher', 'admin']}>
+                        <TeacherSubmissionReview />
+                    </PrivateRoute>
+                } />
                 <Route path="/admin" element={
                     <PrivateRoute allowedRoles={['admin']}>
                         <AdminPanel />
