@@ -11,6 +11,8 @@ const {
 const { upsertMcqResponse } = require("../data/mcq-response.store");
 const { ensureCourseAccess } = require("./course.service");
 const { requestSocraticHint } = require("./openai-tutor.service");
+const { EVENT_TYPES } = require("../constants/provenance");
+const { addProvenanceEvent } = require("../data/provenance.store");
 
 const DEFAULT_MAX_HINT_LEVEL = 3;
 const JAILBREAK_REFUSAL_MESSAGE =
@@ -29,6 +31,10 @@ function countWords(text) {
 
 function getMaxHintLevel(assignment) {
   return Number(assignment?.maxHintLevel || DEFAULT_MAX_HINT_LEVEL);
+}
+
+function getMinWordsForHint(assignment) {
+  return Number(assignment?.minWordsForHint || 0);
 }
 
 function isTutorAssignment(assignment) {
@@ -142,9 +148,16 @@ async function requestHint({ user, assignmentId, courseId, message }) {
   });
 
   const maxHintLevel = getMaxHintLevel(assignment);
+  const minWordsForHint = getMinWordsForHint(assignment);
   const effectiveWordsTyped = countWords(message);
   const latestInteraction = await getLatestHintInteractionForStudySession(session.id);
   const jailbreakDetected = detectJailbreak(message);
+
+  if (effectiveWordsTyped < minWordsForHint) {
+    const error = new Error(`Please show more of your own thinking before requesting a hint. Minimum ${minWordsForHint} words required.`);
+    error.statusCode = 409;
+    throw error;
+  }
 
   if (latestInteraction && latestInteraction.hintLevel >= maxHintLevel) {
     const response =
@@ -187,6 +200,25 @@ async function requestHint({ user, assignmentId, courseId, message }) {
     aiResponse: response,
     wordsTyped: effectiveWordsTyped,
     jailbreakDetected
+  });
+
+  await addProvenanceEvent({
+    studentId: user.id,
+    courseId: resolvedCourseId,
+    assignmentId: assignment?.id || null,
+    studySessionId: session.id,
+    hintInteractionId: interaction.id,
+    eventType: EVENT_TYPES.TUTOR_HINT_USED,
+    summaryText: `Tutor hint used at level L${level}.`,
+    detailText: jailbreakDetected
+      ? "The tutor refused the request because it matched a jailbreak pattern."
+      : "A Socratic hint was delivered and logged for teacher review.",
+    metadata: {
+      hintLevel: `L${level}`,
+      jailbreakDetected,
+      wordsTyped: effectiveWordsTyped
+    },
+    createdBy: user.id
   });
 
   return {

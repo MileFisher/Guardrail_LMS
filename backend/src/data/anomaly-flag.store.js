@@ -235,11 +235,127 @@ async function getPasteTimelineBySessionIds(sessionIds) {
   return bySessionId;
 }
 
+async function getFlagWithContext(flagId) {
+  const result = await query(
+    `SELECT
+       af.id,
+       af.submission_id,
+       af.session_id,
+       af.student_id,
+       af.wpm_z,
+       af.paste_z,
+       af.revision_z,
+       af.composite_z,
+       af.confidence_pct,
+       af.zscore_threshold_snapshot,
+       af.paste_threshold_chars_snapshot,
+       af.paste_triggered,
+       af.status,
+       af.teacher_notes,
+       af.student_appeal,
+       af.flagged_at,
+       af.reviewed_at,
+       a.id AS assignment_id,
+       a.title AS assignment_title,
+       c.id AS course_id,
+       c.code AS course_code,
+       c.title AS course_title,
+       sm.wpm,
+       sm.paste_count,
+       sm.paste_chars_total,
+       sm.blur_count,
+       sm.revision_rate,
+       sm.avg_dwell_ms,
+       sm.avg_flight_ms,
+       s.content_text
+     FROM anomaly_flags af
+     JOIN writing_sessions ws ON ws.id = af.session_id
+     JOIN assignments a ON a.id = ws.assignment_id
+     JOIN courses c ON c.id = a.course_id
+     LEFT JOIN session_metrics sm ON sm.session_id = ws.id
+     LEFT JOIN submissions s ON s.session_id = ws.id
+     WHERE af.id = $1
+     LIMIT 1`,
+    [flagId]
+  );
+
+  const row = result.rows[0];
+  if (!row) {
+    return null;
+  }
+
+  return {
+    ...mapAnomalyFlag(row),
+    assignmentId: row.assignment_id,
+    assignmentTitle: row.assignment_title,
+    courseId: row.course_id,
+    courseCode: row.course_code,
+    courseTitle: row.course_title,
+    sessionData: {
+      wpm: row.wpm === null ? null : Number(row.wpm),
+      pasteCount: row.paste_count === null ? null : Number(row.paste_count),
+      pasteCharsTotal: row.paste_chars_total === null ? null : Number(row.paste_chars_total),
+      blurCount: row.blur_count === null ? null : Number(row.blur_count),
+      revisionRate: row.revision_rate === null ? null : Number(row.revision_rate),
+      avgDwellMs: row.avg_dwell_ms === null ? null : Number(row.avg_dwell_ms),
+      avgFlightMs: row.avg_flight_ms === null ? null : Number(row.avg_flight_ms),
+      contentText: row.content_text || ""
+    }
+  };
+}
+
+async function updateAnomalyFlag(flagId, changes) {
+  const assignments = [];
+  const values = [];
+
+  if (changes.status !== undefined) {
+    values.push(changes.status);
+    assignments.push(`status = $${values.length}`);
+  }
+
+  if (changes.teacherNotes !== undefined) {
+    values.push(changes.teacherNotes);
+    assignments.push(`teacher_notes = $${values.length}`);
+  }
+
+  if (changes.studentAppeal !== undefined) {
+    values.push(changes.studentAppeal);
+    assignments.push(`student_appeal = $${values.length}`);
+  }
+
+  if (changes.reviewedAt !== undefined) {
+    values.push(changes.reviewedAt);
+    assignments.push(`reviewed_at = $${values.length}`);
+  }
+
+  if (!assignments.length) {
+    return getFlagWithContext(flagId);
+  }
+
+  values.push(flagId);
+
+  const result = await query(
+    `UPDATE anomaly_flags
+     SET ${assignments.join(", ")}
+     WHERE id = $${values.length}
+     RETURNING id`,
+    values
+  );
+
+  if (!result.rows[0]) {
+    return null;
+  }
+
+  return getFlagWithContext(flagId);
+}
+
 module.exports = {
   deleteAnomalyFlagBySessionId,
+  getFlagWithContext,
   getPasteTimelineBySessionIds,
   listFlagsForStudentInCourse,
   listOwnFlags,
   mapAnomalyFlag,
+  updateAnomalyFlag,
   upsertAnomalyFlag
 };

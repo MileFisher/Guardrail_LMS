@@ -341,7 +341,7 @@ function ThresholdsTab({ thresholds, onSave, mutating }) {
     )
 }
 
-function SystemTab() {
+function SystemTab({ onExportProvenanceAudit }) {
     const checks = [
         { label: 'PostgreSQL connection', status: 'ok',   detail: 'Connected · v15.4' },
         { label: 'Redis connection',      status: 'ok',   detail: 'Connected · hit rate 94%' },
@@ -381,11 +381,11 @@ function SystemTab() {
                 <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
                     {[
                         { label: 'View Socratic system prompt version', color: '#1a1a2e' },
-                        { label: 'Export compliance audit data', color: '#1d4ed8' },
+                        { label: 'Export provenance audit data', color: '#1d4ed8', action: onExportProvenanceAudit },
                         { label: 'Process data deletion requests', color: '#7c3aed' },
                         { label: 'Trigger partition rotation', color: '#d97706' },
                     ].map(a => (
-                        <button key={a.label} style={{ ...btnS, color: a.color, borderColor: a.color + '44', fontSize: '12px' }}>{a.label}</button>
+                        <button key={a.label} onClick={a.action} style={{ ...btnS, color: a.color, borderColor: a.color + '44', fontSize: '12px' }}>{a.label}</button>
                     ))}
                 </div>
                 <p style={{ margin: '10px 0 0', fontSize: '11px', color: '#ccc' }}>System actions are shown only when backed by API data.</p>
@@ -472,6 +472,22 @@ function AdminPanel() {
         finally { setMutating(false) }
     }
 
+    const handleExportProvenanceAudit = async () => {
+        try {
+            const payload = await apiGet('/api/admin/provenance-audit')
+            const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
+            const url = URL.createObjectURL(blob)
+            const anchor = document.createElement('a')
+            anchor.href = url
+            anchor.download = `guardrail-provenance-audit-${new Date().toISOString().slice(0, 10)}.json`
+            anchor.click()
+            URL.revokeObjectURL(url)
+            showToast('Provenance audit exported.')
+        } catch (e) {
+            showToast(e.message, 'error')
+        }
+    }
+
     const tabs = [
         { id: TABS.USERS,      label: 'User Accounts',     icon: '👥', note: 'UC-A1' },
         { id: TABS.THRESHOLDS, label: 'Global Thresholds', icon: '⚙️', note: 'UC-A3' },
@@ -532,7 +548,7 @@ function AdminPanel() {
                 )}
                 {activeTab === TABS.USERS      && <UsersTab users={users} onEdit={handleEditUser} onCreate={handleCreateUser} onDeactivate={handleDeactivate} mutating={mutating} />}
                 {activeTab === TABS.THRESHOLDS && <ThresholdsTab thresholds={thresholds} onSave={handleSaveThresholds} mutating={mutating} />}
-                {activeTab === TABS.SYSTEM     && <SystemTab />}
+                {activeTab === TABS.SYSTEM     && <SystemTab onExportProvenanceAudit={handleExportProvenanceAudit} />}
             </div>
         </div>
     )

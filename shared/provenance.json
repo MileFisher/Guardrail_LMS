@@ -1,0 +1,18 @@
+{
+  "eventTypes": {
+    "TUTOR_HINT_USED": "tutor_hint_used",
+    "LECTURE_ACCESSED": "lecture_accessed",
+    "LARGE_PASTE_DETECTED": "large_paste_detected",
+    "SOURCE_DECLARED": "source_declared",
+    "SUBMISSION_REFLECTION": "submission_reflection"
+  },
+  "sourceTypes": {
+    "OWN_DRAFT": "own_draft",
+    "OWN_NOTES": "own_notes",
+    "LECTURE_MATERIAL": "lecture_material",
+    "TUTOR_HINT": "tutor_hint",
+    "EXTERNAL_AI": "external_ai",
+    "PEER_DISCUSSION": "peer_discussion",
+    "OTHER": "other"
+  }
+}

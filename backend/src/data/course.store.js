@@ -173,7 +173,7 @@ async function listEnrollmentsByCourse(courseId) {
           AND sb.course_id = e.course_id
       ) baseline ON TRUE
       LEFT JOIN LATERAL (
-        SELECT COUNT(*)::int AS pending_flags
+       SELECT COUNT(*)::int AS pending_flags
         FROM anomaly_flags af
         JOIN writing_sessions ws ON ws.id = af.session_id
         JOIN assignments a ON a.id = ws.assignment_id
@@ -181,6 +181,13 @@ async function listEnrollmentsByCourse(courseId) {
           AND a.course_id = e.course_id
           AND af.status = 'pending'
       ) flags ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT COUNT(*)::int AS hints_used
+        FROM hint_interactions hi
+        JOIN study_sessions ss ON ss.id = hi.study_session_id
+        WHERE hi.student_id = e.student_id
+          AND ss.course_id = e.course_id
+      ) hints ON TRUE
       WHERE e.course_id = $1
       ORDER BY e.enrolled_at ASC`,
     [courseId]
@@ -194,6 +201,7 @@ async function listEnrollmentsByCourse(courseId) {
     sessionCount: Number(row.session_count || 0),
     isCalibrated: row.is_calibrated,
     pendingFlags: Number(row.pending_flags || 0),
+    hintsUsed: Number(row.hints_used || 0),
     student: {
       id: row.student_id,
       displayName: row.display_name,

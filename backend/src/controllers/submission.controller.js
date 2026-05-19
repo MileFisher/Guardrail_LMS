@@ -6,7 +6,10 @@ async function createSubmission(req, res, next) {
       user: req.user,
       assignmentId: req.body.assignmentId,
       sessionId: req.body.sessionId,
-      contentText: req.body.contentText
+      contentText: req.body.contentText,
+      declaredSources: req.body.declaredSources,
+      reflectionText: req.body.reflectionText,
+      transformationNotes: req.body.transformationNotes
     });
 
     return res.status(201).json({

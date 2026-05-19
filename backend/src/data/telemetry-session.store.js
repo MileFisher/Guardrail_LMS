@@ -17,7 +17,15 @@ function mapTelemetrySession(row) {
     createdAt: row.started_at,
     endedAt: row.ended_at,
     submittedAt: row.submitted_at,
-    payloadCount: Number(row.payload_count || 0)
+    payloadCount: Number(row.payload_count || 0),
+    startingCumulativePasteChars:
+      row.starting_cumulative_paste_chars === null || row.starting_cumulative_paste_chars === undefined
+        ? undefined
+        : Number(row.starting_cumulative_paste_chars),
+    maxCumulativePasteChars:
+      row.max_cumulative_paste_chars === null || row.max_cumulative_paste_chars === undefined
+        ? undefined
+        : Number(row.max_cumulative_paste_chars)
   };
 }
 
@@ -339,7 +347,16 @@ async function addTelemetryPayload(sessionId, payload) {
       [sessionId]
     );
 
-    return mapTelemetrySession(sessionResult.rows[0]);
+    const maxCumulativePasteChars = eventRows.reduce(
+      (maxValue, eventRow) => Math.max(maxValue, Number(eventRow.cumulativePasteChars || 0)),
+      Number(startingCumulativePasteChars || 0)
+    );
+
+    return mapTelemetrySession({
+      ...sessionResult.rows[0],
+      starting_cumulative_paste_chars: startingCumulativePasteChars,
+      max_cumulative_paste_chars: maxCumulativePasteChars
+    });
   });
 }
 

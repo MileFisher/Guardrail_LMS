@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import Consent from './Consent'
+import { EVENT_TYPES, formatEventLabel, formatSourceLabel } from '../constants/provenance'
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || ''
 
@@ -270,7 +271,7 @@ function AssignmentRow({ assignment, onOpen }) {
     )
 }
 
-function LectureCard({ lecture }) {
+function LectureCard({ lecture, onAccess }) {
     return (
         <div
             style={{
@@ -290,11 +291,30 @@ function LectureCard({ lecture }) {
                 </p>
             )}
             {renderLectureMedia(lecture)}
+            {lecture.mediaUrl && (
+                <button
+                    type="button"
+                    onClick={() => onAccess(lecture)}
+                    style={{
+                        marginTop: '10px',
+                        padding: '7px 12px',
+                        borderRadius: '8px',
+                        border: '1px solid #bfdbfe',
+                        background: '#eff6ff',
+                        color: '#1d4ed8',
+                        fontSize: '12px',
+                        fontWeight: '600',
+                        cursor: 'pointer',
+                    }}
+                >
+                    Open resource & log
+                </button>
+            )}
         </div>
     )
 }
 
-function CourseCard({ course, onOpenAssignment }) {
+function CourseCard({ course, onOpenAssignment, onAccessLecture }) {
     const [expanded, setExpanded] = useState(true)
     const essayAssignments = course.assignments.filter((a) => isEssayAssignmentType(a.assignmentType))
     const submitted = essayAssignments.filter((a) => a.status === 'submitted').length
@@ -371,7 +391,7 @@ function CourseCard({ course, onOpenAssignment }) {
                         {course.lectures?.length ? (
                             <div style={{ display: 'grid', gap: '12px' }}>
                                 {course.lectures.map((lecture) => (
-                                    <LectureCard key={lecture.id} lecture={lecture} />
+                                    <LectureCard key={lecture.id} lecture={lecture} onAccess={onAccessLecture} />
                                 ))}
                             </div>
                         ) : (
@@ -477,6 +497,35 @@ function DeleteDataModal({ onClose }) {
     )
 }
 
+function ProvenanceLedgerRow({ event }) {
+    return (
+        <div
+            style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                gap: '12px',
+                padding: '12px 20px',
+                borderBottom: '1px solid #f5f5f5',
+            }}
+        >
+            <div>
+                <p style={{ margin: '0 0 3px', fontSize: '14px', fontWeight: '600', color: '#1a1a2e' }}>
+                    {formatEventLabel(event.eventType)}
+                </p>
+                <p style={{ margin: '0 0 3px', fontSize: '12px', color: '#64748b' }}>
+                    {event.courseCode || 'Course'}{event.assignmentTitle ? ` · ${event.assignmentTitle}` : ''}
+                </p>
+                <p style={{ margin: 0, fontSize: '12px', color: '#94a3b8', lineHeight: 1.5 }}>
+                    {event.sourceType ? `${formatSourceLabel(event.sourceType)} · ` : ''}{event.summaryText || event.detailText || 'Recorded for ethical AI review.'}
+                </p>
+            </div>
+            <span style={{ fontSize: '12px', color: '#94a3b8', whiteSpace: 'nowrap' }}>
+                {new Date(event.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+            </span>
+        </div>
+    )
+}
+
 async function apiGet(path) {
     const token = localStorage.getItem('token')
     const res = await fetch(`${API_BASE}${path}`, {
@@ -487,6 +536,21 @@ async function apiGet(path) {
     })
     const data = await res.json().catch(() => ({}))
     if (!res.ok) throw new Error(data.message || `Request failed: ${res.status}`)
+    return data
+}
+
+async function apiPost(path, body) {
+    const token = localStorage.getItem('token')
+    const res = await fetch(`${API_BASE}${path}`, {
+        method: 'POST',
+        headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(data.message || `POST ${path} failed`)
     return data
 }
 
@@ -501,6 +565,7 @@ function Dashboard() {
     const [courses, setCourses] = useState([])
     const [wpmSessions, setWpmSessions] = useState([])
     const [hintHistory, setHintHistory] = useState([])
+    const [provenanceLedger, setProvenanceLedger] = useState([])
     const [ownFlags, setOwnFlags] = useState([])
     const [totalSessions, setTotalSessions] = useState(0)
     const [loading, setLoading] = useState(true)
@@ -515,11 +580,12 @@ function Dashboard() {
                 setLoading(true)
                 setError('')
 
-                const [coursesRes, sessionsRes, baselinesRes, flagsRes] = await Promise.all([
+                const [coursesRes, sessionsRes, baselinesRes, flagsRes, ledgerRes] = await Promise.all([
                     apiGet('/api/courses'),
                     apiGet('/api/telemetry/sessions?mine=true').catch(() => ({ sessions: [] })),
                     apiGet('/api/telemetry/baselines?mine=true').catch(() => ({ baselines: [] })),
                     apiGet('/api/flags/me').catch(() => ({ flags: [] })),
+                    apiGet('/api/provenance/ledger?mine=true').catch(() => ({ ledger: [] })),
                 ])
 
                 const baseCourses = (coursesRes.courses || []).map((course) => ({
@@ -563,6 +629,7 @@ function Dashboard() {
                     confidence: flag.confidencePct ?? flag.confidence,
                     createdAt: flag.flaggedAt || flag.createdAt,
                 }))
+                const ledger = ledgerRes.ledger || []
 
                 const assignmentsByCourse = new Map(courseContent.map((item) => [item.courseId, item.assignments]))
                 const lecturesByCourse = new Map(courseContent.map((item) => [item.courseId, item.lectures]))
@@ -595,7 +662,18 @@ function Dashboard() {
 
                 setCourses(mergedCourses)
                 setWpmSessions(safeWpm)
-                setHintHistory([])
+                setHintHistory(
+                    ledger
+                        .filter((event) => event.eventType === EVENT_TYPES.TUTOR_HINT_USED)
+                        .map((event) => ({
+                            id: event.id,
+                            assignmentTitle: event.assignmentTitle || 'Tutor session',
+                            courseCode: event.courseCode || '',
+                            date: event.createdAt,
+                            hintLevel: event.metadata?.hintLevel || 'L1',
+                        }))
+                )
+                setProvenanceLedger(ledger)
                 setOwnFlags(flags)
                 setTotalSessions(
                     sessions.filter((s) => s.status === 'completed' || s.status === 'submitted').length
@@ -630,6 +708,22 @@ function Dashboard() {
             setShowConsent(true)
         } else {
             navigate(`/editor?assignmentId=${assignment.id}`)
+        }
+    }
+
+    const handleAccessLecture = async (lecture) => {
+        const popup = lecture.mediaUrl ? window.open(lecture.mediaUrl, '_blank', 'noopener,noreferrer') : null
+
+        try {
+            await apiPost('/api/provenance/lecture-access', {
+                courseId: lecture.courseId,
+                lectureId: lecture.id,
+            })
+        } catch {
+            // keep the resource accessible even if logging fails
+            if (!popup && lecture.mediaUrl) {
+                window.open(lecture.mediaUrl, '_blank', 'noopener,noreferrer')
+            }
         }
     }
 
@@ -815,7 +909,7 @@ function Dashboard() {
 
                 {courses.length ? (
                     courses.map((course) => (
-                        <CourseCard key={course.id} course={course} onOpenAssignment={handleOpenAssignment} />
+                        <CourseCard key={course.id} course={course} onOpenAssignment={handleOpenAssignment} onAccessLecture={handleAccessLecture} />
                     ))
                 ) : (
                     <div style={{ background: 'white', borderRadius: '10px', padding: '1rem', color: '#999', fontSize: '14px' }}>
@@ -904,6 +998,29 @@ function Dashboard() {
                             })}
                             <div style={{ padding: '10px 20px', background: '#f8f9fc', borderTop: '1px solid #f0f0f0' }}>
                                 <p style={{ margin: 0, fontSize: '11px', color: '#aaa' }}>Hint usage is visible to your teacher as part of study logs.</p>
+                            </div>
+                        </>
+                    )}
+                </div>
+
+                <p style={{ fontSize: '13px', fontWeight: '600', color: '#888', textTransform: 'uppercase', letterSpacing: '0.6px', margin: '1.5rem 0 12px' }}>
+                    AI Use Ledger
+                </p>
+
+                <div style={{ background: 'white', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.07)', overflow: 'hidden', marginBottom: '1rem' }}>
+                    {provenanceLedger.length === 0 ? (
+                        <p style={{ padding: '1.5rem', color: '#aaa', fontSize: '14px', textAlign: 'center' }}>
+                            No provenance events recorded yet.
+                        </p>
+                    ) : (
+                        <>
+                            {provenanceLedger.slice(0, 10).map((event) => (
+                                <ProvenanceLedgerRow key={event.id} event={event} />
+                            ))}
+                            <div style={{ padding: '10px 20px', background: '#f8fafc', borderTop: '1px solid #f1f5f9' }}>
+                                <p style={{ margin: 0, fontSize: '11px', color: '#94a3b8' }}>
+                                    This ledger shows the same ethical-AI evidence that can be reviewed alongside your telemetry and appeal history.
+                                </p>
                             </div>
                         </>
                     )}

@@ -1,6 +1,7 @@
 const { registerUser, sanitizeUser } = require("./auth.service");
 const { getAllUsers, findUserById, updateUser } = require("../data/user.store");
 const { getThresholds, saveThresholds } = require("../data/admin.store");
+const { exportAuditDataset } = require("./provenance.service");
 
 function mapAdminUser(user) {
   const sanitized = sanitizeUser(user);
@@ -85,9 +86,14 @@ async function updateThresholds(input) {
   return saveThresholds(input || {});
 }
 
+async function exportProvenanceAudit() {
+  return exportAuditDataset();
+}
+
 module.exports = {
   createUser,
   editUser,
+  exportProvenanceAudit,
   listUsers,
   readThresholds,
   updateThresholds

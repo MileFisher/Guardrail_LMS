@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { formatEventLabel, formatSourceLabel } from '../constants/provenance'
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || ''
 
@@ -386,6 +387,110 @@ function StdDetails() {
                                         <span style={{ fontWeight: '600', color: '#e74c3c' }}>{pasteEvent.charCount} chars</span>
                                     </div>
                                 ))}
+                            </div>
+                        </div>
+
+                        <div style={{ padding: '0 1.5rem 1.25rem', display: 'grid', gap: '14px' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+                                <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '14px' }}>
+                                    <p style={{ margin: '0 0 8px', fontSize: '13px', fontWeight: '600', color: '#334155' }}>
+                                        Provenance consistency
+                                    </p>
+                                    <p style={{ margin: '0 0 4px', fontSize: '24px', fontWeight: '700', color: '#1a5fa8' }}>
+                                        {flag.provenanceAssessment?.consistencyScore ?? 'N/A'}
+                                    </p>
+                                    <p style={{ margin: '0 0 8px', fontSize: '12px', color: '#64748b' }}>
+                                        {flag.provenanceAssessment?.consistencyLabel || 'No provenance assessment yet'}
+                                    </p>
+                                    {(flag.provenanceAssessment?.notes || []).map((note) => (
+                                        <p key={note} style={{ margin: '0 0 6px', fontSize: '12px', color: '#b45309', lineHeight: 1.5 }}>
+                                            {note}
+                                        </p>
+                                    ))}
+                                </div>
+
+                                <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '14px' }}>
+                                    <p style={{ margin: '0 0 8px', fontSize: '13px', fontWeight: '600', color: '#334155' }}>
+                                        Submission reflection
+                                    </p>
+                                    {flag.reflection ? (
+                                        <>
+                                            <p style={{ margin: '0 0 8px', fontSize: '12px', color: '#475569', lineHeight: 1.6 }}>
+                                                {flag.reflection.reflectionText}
+                                            </p>
+                                            {flag.reflection.transformationNotes && (
+                                                <p style={{ margin: '0 0 8px', fontSize: '12px', color: '#64748b', lineHeight: 1.6 }}>
+                                                    Notes: {flag.reflection.transformationNotes}
+                                                </p>
+                                            )}
+                                            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                                                {(flag.reflection.declaredSources || []).map((source) => (
+                                                    <span key={source} style={{ padding: '3px 8px', borderRadius: '999px', background: '#eff6ff', border: '1px solid #bfdbfe', color: '#1d4ed8', fontSize: '11px', fontWeight: '600' }}>
+                                                        {formatSourceLabel(source)}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <p style={{ margin: 0, fontSize: '12px', color: '#94a3b8' }}>
+                                            No submission reflection recorded.
+                                        </p>
+                                    )}
+                                </div>
+                            </div>
+
+                            {flag.studentAppeal && (
+                                <div style={{ background: '#fff8f0', border: '1px solid #fed7aa', borderRadius: '10px', padding: '14px' }}>
+                                    <p style={{ margin: '0 0 8px', fontSize: '13px', fontWeight: '600', color: '#c0560a' }}>
+                                        Student appeal
+                                    </p>
+                                    <p style={{ margin: 0, fontSize: '12px', color: '#7c2d12', lineHeight: 1.6 }}>
+                                        {flag.studentAppeal}
+                                    </p>
+                                </div>
+                            )}
+
+                            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', overflow: 'hidden' }}>
+                                <div style={{ padding: '12px 14px', borderBottom: '1px solid #e2e8f0' }}>
+                                    <p style={{ margin: 0, fontSize: '13px', fontWeight: '600', color: '#334155' }}>
+                                        Unified evidence timeline
+                                    </p>
+                                </div>
+                                {flag.provenanceTimeline?.length ? (
+                                    flag.provenanceTimeline.map((event, index) => (
+                                        <div
+                                            key={event.id}
+                                            style={{
+                                                display: 'flex',
+                                                justifyContent: 'space-between',
+                                                gap: '12px',
+                                                padding: '12px 14px',
+                                                borderBottom: index < flag.provenanceTimeline.length - 1 ? '1px solid #edf2f7' : 'none',
+                                            }}
+                                        >
+                                            <div>
+                                                <p style={{ margin: '0 0 3px', fontSize: '13px', fontWeight: '600', color: '#1a1a2e' }}>
+                                                    {formatEventLabel(event.eventType)}
+                                                </p>
+                                                <p style={{ margin: '0 0 3px', fontSize: '12px', color: '#64748b' }}>
+                                                    {event.sourceType ? `${formatSourceLabel(event.sourceType)} · ` : ''}{event.summaryText || event.detailText}
+                                                </p>
+                                                {event.detailText && event.detailText !== event.summaryText && (
+                                                    <p style={{ margin: 0, fontSize: '12px', color: '#94a3b8', lineHeight: 1.5 }}>
+                                                        {event.detailText}
+                                                    </p>
+                                                )}
+                                            </div>
+                                            <span style={{ fontSize: '12px', color: '#94a3b8', whiteSpace: 'nowrap' }}>
+                                                {new Date(event.createdAt).toLocaleString()}
+                                            </span>
+                                        </div>
+                                    ))
+                                ) : (
+                                    <p style={{ margin: 0, padding: '14px', fontSize: '12px', color: '#94a3b8' }}>
+                                        No provenance events recorded for this flag yet.
+                                    </p>
+                                )}
                             </div>
                         </div>
 

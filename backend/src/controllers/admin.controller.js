@@ -1,6 +1,7 @@
 const {
   createUser,
   editUser,
+  exportProvenanceAudit,
   listUsers,
   readThresholds,
   updateThresholds
@@ -53,7 +54,16 @@ async function patchThresholds(req, res, next) {
   }
 }
 
+async function getProvenanceAudit(req, res, next) {
+  try {
+    return res.status(200).json(await exportProvenanceAudit());
+  } catch (error) {
+    return next(error);
+  }
+}
+
 module.exports = {
+  getProvenanceAudit,
   getThresholds,
   getUsers,
   patchThresholds,

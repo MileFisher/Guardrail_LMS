@@ -9,6 +9,8 @@ const { listBaselinesByStudent } = require("../data/student-baseline.store");
 const { ensureAssignmentAccess } = require("./course.service");
 const { generateSessionKey } = require("./hmac.service");
 const { enqueueSessionAnalysis } = require("./session-analytics.service");
+const { EVENT_TYPES } = require("../constants/provenance");
+const { addProvenanceEvent, getLatestProvenanceEventForSession } = require("../data/provenance.store");
 
 async function openTelemetrySession({ assignmentId, userId, deviceType, screenResolution }) {
   const assignment = await ensureAssignmentAccess(assignmentId, {
@@ -30,15 +32,47 @@ async function openTelemetrySession({ assignmentId, userId, deviceType, screenRe
     deviceType,
     screenResolution,
     hmacKey
-  });
+  }).then((session) => ({
+    ...session,
+    pasteThresholdChars: assignment.pasteThresholdChars
+  }));
 }
 
 async function storeTelemetryPayload({ sessionId, rawBody, body }) {
-  return addTelemetryPayload(sessionId, {
+  const session = await addTelemetryPayload(sessionId, {
     receivedAt: new Date().toISOString(),
     rawBody,
     body
   });
+
+  const analysisContext = await getTelemetrySessionAnalysisContext(sessionId);
+  const pasteThresholdChars = analysisContext?.pasteThresholdChars;
+  const crossedThreshold =
+    Number.isFinite(Number(pasteThresholdChars)) &&
+    Number(session.startingCumulativePasteChars || 0) < Number(pasteThresholdChars) &&
+    Number(session.maxCumulativePasteChars || 0) >= Number(pasteThresholdChars);
+
+  if (crossedThreshold) {
+    const existingLargePaste = await getLatestProvenanceEventForSession(sessionId, EVENT_TYPES.LARGE_PASTE_DETECTED);
+
+    if (!existingLargePaste) {
+      await addProvenanceEvent({
+        studentId: analysisContext.userId,
+        courseId: analysisContext.courseId,
+        assignmentId: analysisContext.assignmentId,
+        sessionId,
+        eventType: EVENT_TYPES.LARGE_PASTE_DETECTED,
+        summaryText: "Large paste threshold exceeded during monitored writing.",
+        detailText: "The student must declare the source of this pasted material before submission.",
+        metadata: {
+          thresholdChars: pasteThresholdChars,
+          cumulativePasteChars: session.maxCumulativePasteChars
+        }
+      });
+    }
+  }
+
+  return session;
 }
 
 async function listOwnTelemetrySessions(user) {

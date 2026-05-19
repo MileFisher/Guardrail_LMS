@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import Consent from './Consent'
+import { SOURCE_OPTIONS } from '../constants/provenance'
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || ''
 
@@ -39,6 +40,29 @@ function toHex(buffer) {
         .join('')
 }
 
+function SourceChip({ value, selected, onToggle }) {
+    const option = SOURCE_OPTIONS.find((item) => item.value === value)
+
+    return (
+        <button
+            type="button"
+            onClick={() => onToggle(value)}
+            style={{
+                padding: '6px 10px',
+                borderRadius: '999px',
+                border: `1px solid ${selected ? '#1a5fa8' : '#dbe7f3'}`,
+                background: selected ? '#eff6ff' : 'white',
+                color: selected ? '#1a5fa8' : '#64748b',
+                fontSize: '12px',
+                fontWeight: '600',
+                cursor: 'pointer',
+            }}
+        >
+            {option?.label || value}
+        </button>
+    )
+}
+
 function Editor() {
     const [searchParams] = useSearchParams()
     const assignmentId = searchParams.get('assignmentId')
@@ -49,6 +73,15 @@ function Editor() {
     const [session, setSession] = useState(null)
     const [error, setError] = useState('')
     const [submitting, setSubmitting] = useState(false)
+    const [showDeclarationPrompt, setShowDeclarationPrompt] = useState(false)
+    const [declarationSaving, setDeclarationSaving] = useState(false)
+    const [declaredSources, setDeclaredSources] = useState([])
+    const [declarationSourceType, setDeclarationSourceType] = useState('own_notes')
+    const [declarationDetail, setDeclarationDetail] = useState('')
+    const [lastDeclaration, setLastDeclaration] = useState(null)
+    const [requiresPasteDeclaration, setRequiresPasteDeclaration] = useState(false)
+    const [reflectionText, setReflectionText] = useState('')
+    const [transformationNotes, setTransformationNotes] = useState('')
 
     const [showConsent, setShowConsent] = useState(!localStorage.getItem('consentAccepted'))
 
@@ -60,6 +93,12 @@ function Editor() {
     const signingKey = useRef(null)
 
     const navigate = useNavigate()
+
+    const toggleDeclaredSource = (value) => {
+        setDeclaredSources((previous) =>
+            previous.includes(value) ? previous.filter((item) => item !== value) : [...previous, value]
+        )
+    }
 
     const handleConsentAccepted = async () => {
         try {
@@ -166,6 +205,9 @@ function Editor() {
 
                 if (!cancelled) {
                     setSession(response.session)
+                    if (response.session?.pasteThresholdChars === 0) {
+                        setRequiresPasteDeclaration(false)
+                    }
                     setStatus('Session started. You may begin typing.')
                 }
             } catch (sessionError) {
@@ -256,6 +298,7 @@ function Editor() {
 
         const pastedText = event.clipboardData?.getData('text') || ''
         const pasteChars = pastedText.length
+        const previousCumulative = cumulativePasteChars.current
         cumulativePasteChars.current += pasteChars
 
         events.current.push({
@@ -264,6 +307,17 @@ function Editor() {
             cumulativePasteChars: cumulativePasteChars.current,
             timestamp: new Date().toISOString(),
         })
+
+        const threshold = Number(session?.pasteThresholdChars || 0)
+        if (
+            threshold > 0 &&
+            previousCumulative < threshold &&
+            cumulativePasteChars.current >= threshold
+        ) {
+            setRequiresPasteDeclaration(true)
+            setShowDeclarationPrompt(true)
+            setStatus('Large paste detected. Please declare the source before submitting.')
+        }
     }
 
     const handleSubmit = () => {
@@ -272,13 +326,66 @@ function Editor() {
             return
         }
 
+        if (requiresPasteDeclaration) {
+            setError('Please declare the source of your pasted material before submitting.')
+            setShowDeclarationPrompt(true)
+            return
+        }
+
         setError('')
         setShowConfirm(true)
+    }
+
+    const handleSaveDeclaration = async () => {
+        if (!session?.id) {
+            setError('Telemetry session is not ready yet.')
+            return
+        }
+
+        if (!declarationSourceType) {
+            setError('Please choose a source for the pasted material.')
+            return
+        }
+
+        try {
+            setDeclarationSaving(true)
+            setError('')
+
+            const result = await apiPost('/api/provenance/declarations', {
+                assignmentId: session.assignmentId || assignmentId,
+                sessionId: session.id,
+                sourceType: declarationSourceType,
+                detailText: declarationDetail,
+            })
+
+            setLastDeclaration(result.event || null)
+            setRequiresPasteDeclaration(false)
+            setDeclaredSources((previous) =>
+                previous.includes(declarationSourceType) ? previous : [...previous, declarationSourceType]
+            )
+            setDeclarationDetail('')
+            setShowDeclarationPrompt(false)
+            setStatus('Source declaration saved.')
+        } catch (declarationError) {
+            setError(declarationError.message || 'Failed to save source declaration.')
+        } finally {
+            setDeclarationSaving(false)
+        }
     }
 
     const handleConfirmSubmit = async () => {
         if (!session?.id) {
             setError('Telemetry session is not ready yet.')
+            return
+        }
+
+        if (declaredSources.length === 0) {
+            setError('Please declare at least one source before submitting.')
+            return
+        }
+
+        if (reflectionText.trim().length < 20) {
+            setError('Please add a short submission reflection of at least 20 characters.')
             return
         }
 
@@ -295,6 +402,9 @@ function Editor() {
                 assignmentId: session.assignmentId || assignmentId,
                 sessionId: session.id,
                 contentText: text,
+                declaredSources,
+                reflectionText,
+                transformationNotes,
             })
 
             // 3. Mark telemetry session as complete and lock it
@@ -347,7 +457,7 @@ function Editor() {
                             background: 'white',
                             borderRadius: '12px',
                             padding: '2rem',
-                            width: '380px',
+                            width: '520px',
                             margin: '1rem',
                         }}
                     >
@@ -355,6 +465,41 @@ function Editor() {
                         <p style={{ margin: '0 0 1.5rem', fontSize: '14px', color: '#666' }}>
                             Once submitted, you cannot edit your response. Are you sure?
                         </p>
+                        <div style={{ marginBottom: '1rem', padding: '12px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                            <p style={{ margin: '0 0 8px', fontSize: '12px', fontWeight: '700', color: '#475569', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                Ethical AI provenance
+                            </p>
+                            <p style={{ margin: '0 0 8px', fontSize: '13px', color: '#64748b', lineHeight: 1.5 }}>
+                                Declare what sources or AI tools informed this submission and explain how you transformed them into your own work.
+                            </p>
+                            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '10px' }}>
+                                {SOURCE_OPTIONS.map((option) => (
+                                    <SourceChip
+                                        key={option.value}
+                                        value={option.value}
+                                        selected={declaredSources.includes(option.value)}
+                                        onToggle={toggleDeclaredSource}
+                                    />
+                                ))}
+                            </div>
+                            <textarea
+                                value={reflectionText}
+                                onChange={(event) => setReflectionText(event.target.value)}
+                                placeholder="Reflection: what sources or AI support did you use, and how did you adapt them into your own submission?"
+                                rows={4}
+                                style={{ width: '100%', boxSizing: 'border-box', resize: 'none', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '10px 12px', fontSize: '13px', fontFamily: 'inherit', marginBottom: '10px' }}
+                            />
+                            <textarea
+                                value={transformationNotes}
+                                onChange={(event) => setTransformationNotes(event.target.value)}
+                                placeholder="Optional transformation notes: what changed between the source material and your final answer?"
+                                rows={3}
+                                style={{ width: '100%', boxSizing: 'border-box', resize: 'none', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '10px 12px', fontSize: '13px', fontFamily: 'inherit' }}
+                            />
+                            <p style={{ margin: '8px 0 0', fontSize: '12px', color: reflectionText.trim().length >= 20 ? '#15803d' : '#b45309' }}>
+                                Reflection length: {reflectionText.trim().length} characters
+                            </p>
+                        </div>
                         {error && (
                             <div style={{
                                 background: '#fef2f2',
@@ -402,6 +547,68 @@ function Editor() {
                                 }}
                             >
                                 Cancel
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+            {showDeclarationPrompt && (
+                <div
+                    style={{
+                        position: 'fixed',
+                        inset: 0,
+                        background: 'rgba(0,0,0,0.55)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        zIndex: 110,
+                    }}
+                >
+                    <div style={{ background: 'white', borderRadius: '14px', padding: '24px', width: '460px', margin: '1rem' }}>
+                        <p style={{ margin: '0 0 8px', fontSize: '17px', fontWeight: '700', color: '#1a1a2e' }}>Declare pasted material source</p>
+                        <p style={{ margin: '0 0 14px', fontSize: '13px', color: '#64748b', lineHeight: 1.6 }}>
+                            A large paste was detected in this monitored session. Before submission, please declare where that material came from.
+                        </p>
+                        <div style={{ marginBottom: '12px' }}>
+                            <label style={{ display: 'block', marginBottom: '6px', fontSize: '12px', fontWeight: '600', color: '#475569' }}>Source</label>
+                            <select
+                                value={declarationSourceType}
+                                onChange={(event) => setDeclarationSourceType(event.target.value)}
+                                style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px' }}
+                            >
+                                {SOURCE_OPTIONS.map((option) => (
+                                    <option key={option.value} value={option.value}>
+                                        {option.label}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                        <div style={{ marginBottom: '16px' }}>
+                            <label style={{ display: 'block', marginBottom: '6px', fontSize: '12px', fontWeight: '600', color: '#475569' }}>Context</label>
+                            <textarea
+                                value={declarationDetail}
+                                onChange={(event) => setDeclarationDetail(event.target.value)}
+                                placeholder="Example: I drafted this paragraph in my own notes app earlier and pasted it here to avoid losing work."
+                                rows={4}
+                                style={{ width: '100%', boxSizing: 'border-box', resize: 'none', borderRadius: '8px', border: '1px solid #cbd5e1', padding: '10px 12px', fontSize: '13px', fontFamily: 'inherit' }}
+                            />
+                        </div>
+                        <div style={{ display: 'flex', gap: '10px' }}>
+                            <button
+                                type="button"
+                                onClick={handleSaveDeclaration}
+                                disabled={declarationSaving}
+                                style={{ flex: 1, padding: '10px', background: declarationSaving ? '#93c5fd' : '#1a5fa8', color: 'white', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: '600', cursor: declarationSaving ? 'not-allowed' : 'pointer' }}
+                            >
+                                {declarationSaving ? 'Saving...' : 'Save declaration'}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setShowDeclarationPrompt(false)}
+                                disabled={declarationSaving}
+                                style={{ flex: 1, padding: '10px', background: 'white', color: '#475569', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '13px', fontWeight: '600', cursor: declarationSaving ? 'not-allowed' : 'pointer' }}
+                            >
+                                Close
                             </button>
                         </div>
                     </div>
@@ -486,6 +693,46 @@ function Editor() {
                         Your assignment has been submitted successfully. This session is now locked.
                     </div>
                 )}
+
+                <div style={{ marginBottom: '1rem', padding: '12px 16px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
+                        <div>
+                            <p style={{ margin: '0 0 4px', fontSize: '12px', fontWeight: '700', color: '#475569', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                AI provenance
+                            </p>
+                            <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>
+                                Large paste threshold: {session?.pasteThresholdChars ?? 'N/A'} chars
+                            </p>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => setShowDeclarationPrompt(true)}
+                            disabled={!session?.id}
+                            style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #bfdbfe', background: '#eff6ff', color: '#1d4ed8', fontSize: '12px', fontWeight: '600', cursor: !session?.id ? 'not-allowed' : 'pointer' }}
+                        >
+                            Declare source
+                        </button>
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '10px' }}>
+                        {declaredSources.length === 0 ? (
+                            <span style={{ fontSize: '12px', color: '#94a3b8' }}>No sources declared yet.</span>
+                        ) : (
+                            declaredSources.map((source) => (
+                                <SourceChip key={source} value={source} selected={true} onToggle={toggleDeclaredSource} />
+                            ))
+                        )}
+                    </div>
+                    {requiresPasteDeclaration && (
+                        <p style={{ margin: '10px 0 0', fontSize: '12px', color: '#b45309', fontWeight: '600' }}>
+                            Large pasted content has been detected. A source declaration is required before submission.
+                        </p>
+                    )}
+                    {lastDeclaration && !requiresPasteDeclaration && (
+                        <p style={{ margin: '10px 0 0', fontSize: '12px', color: '#15803d' }}>
+                            Latest declaration saved for this session.
+                        </p>
+                    )}
+                </div>
 
                 <textarea
                     value={text}

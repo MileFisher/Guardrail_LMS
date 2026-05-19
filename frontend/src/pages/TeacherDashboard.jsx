@@ -1212,7 +1212,7 @@ function TeacherDashboard() {
                         sessions: enrollment.sessionCount || 0,
                         calibrated: Boolean(enrollment.isCalibrated),
                         pendingFlags: enrollment.pendingFlags || 0,
-                        hintsUsed: 0,
+                        hintsUsed: enrollment.hintsUsed || 0,
                     }))
 
                     return {

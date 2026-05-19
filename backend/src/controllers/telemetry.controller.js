@@ -33,7 +33,8 @@ async function createSession(req, res, next) {
         screenResolution: session.screenResolution,
         status: session.status,
         createdAt: session.createdAt,
-        hmacKey: session.hmacKey
+        hmacKey: session.hmacKey,
+        pasteThresholdChars: session.pasteThresholdChars
       }
     });
   } catch (error) {

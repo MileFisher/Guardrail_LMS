@@ -1,5 +1,6 @@
 const express = require("express");
 const {
+  getProvenanceAudit,
   getThresholds,
   getUsers,
   patchThresholds,
@@ -16,5 +17,6 @@ router.post("/users", postUser);
 router.patch("/users/:userId", patchUser);
 router.get("/thresholds", getThresholds);
 router.patch("/thresholds", patchThresholds);
+router.get("/provenance-audit", getProvenanceAudit);
 
 module.exports = router;

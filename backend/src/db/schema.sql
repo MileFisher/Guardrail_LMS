@@ -270,6 +270,56 @@ CREATE TABLE IF NOT EXISTS mcq_responses (
 ALTER TABLE mcq_responses
   ADD COLUMN IF NOT EXISTS submitted_at TIMESTAMPTZ;
 
+CREATE TABLE IF NOT EXISTS provenance_events (
+  id TEXT PRIMARY KEY,
+  student_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  course_id TEXT NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+  assignment_id TEXT REFERENCES assignments(id) ON DELETE CASCADE,
+  session_id TEXT REFERENCES writing_sessions(id) ON DELETE CASCADE,
+  study_session_id TEXT REFERENCES study_sessions(id) ON DELETE CASCADE,
+  submission_id TEXT REFERENCES submissions(id) ON DELETE CASCADE,
+  lecture_id TEXT REFERENCES course_lectures(id) ON DELETE SET NULL,
+  hint_interaction_id TEXT REFERENCES hint_interactions(id) ON DELETE SET NULL,
+  event_type TEXT NOT NULL CHECK (
+    event_type IN (
+      'tutor_hint_used',
+      'lecture_accessed',
+      'large_paste_detected',
+      'source_declared',
+      'submission_reflection'
+    )
+  ),
+  source_type TEXT CHECK (
+    source_type IN (
+      'own_draft',
+      'own_notes',
+      'lecture_material',
+      'tutor_hint',
+      'external_ai',
+      'peer_discussion',
+      'other'
+    )
+  ),
+  summary_text TEXT NOT NULL DEFAULT '',
+  detail_text TEXT NOT NULL DEFAULT '',
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS submission_reflections (
+  id TEXT PRIMARY KEY,
+  submission_id TEXT NOT NULL UNIQUE REFERENCES submissions(id) ON DELETE CASCADE,
+  assignment_id TEXT NOT NULL REFERENCES assignments(id) ON DELETE CASCADE,
+  student_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  session_id TEXT NOT NULL REFERENCES writing_sessions(id) ON DELETE CASCADE,
+  declared_sources JSONB NOT NULL DEFAULT '[]'::jsonb,
+  reflection_text TEXT NOT NULL DEFAULT '',
+  transformation_notes TEXT NOT NULL DEFAULT '',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE INDEX IF NOT EXISTS idx_consents_user_id ON consents(user_id);
 CREATE INDEX IF NOT EXISTS idx_course_lectures_course_id ON course_lectures(course_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_writing_sessions_student_id ON writing_sessions(student_id);
@@ -278,3 +328,8 @@ CREATE INDEX IF NOT EXISTS idx_anomaly_flags_student_id ON anomaly_flags(student
 CREATE UNIQUE INDEX IF NOT EXISTS idx_anomaly_flags_session_id_unique ON anomaly_flags(session_id);
 CREATE INDEX IF NOT EXISTS idx_hint_interactions_session_id ON hint_interactions(study_session_id);
 CREATE INDEX IF NOT EXISTS idx_mcq_responses_assignment_student ON mcq_responses(assignment_id, student_id);
+CREATE INDEX IF NOT EXISTS idx_provenance_events_student_id ON provenance_events(student_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_provenance_events_course_id ON provenance_events(course_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_provenance_events_session_id ON provenance_events(session_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_provenance_events_assignment_id ON provenance_events(assignment_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_submission_reflections_student_id ON submission_reflections(student_id, updated_at DESC);
